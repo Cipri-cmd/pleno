@@ -442,13 +442,13 @@ async function syncLeagueData(leagueId, userId) {
 }
 async function loadCloudLeague(preferredLeagueId = null) {
   let query = AUTH.client.from("league_members")
-    .select("league_id,display_name,leagues!inner(id,name,invite_code)")
+    .select("league_id,display_name,leagues!inner(id,name,invite_code,owner_id)")
     .eq("user_id", AUTH.session.user.id);
   const { data, error } = await query.order("joined_at", { ascending: true });
   if (error) throw error;
   LEAGUES.items = (data || []).map((member) => {
     const league = Array.isArray(member.leagues) ? member.leagues[0] : member.leagues;
-    return league ? { id: league.id, name: league.name, code: league.invite_code, displayName: member.display_name } : null;
+    return league ? { id: league.id, name: league.name, code: league.invite_code, displayName: member.display_name, ownerId: league.owner_id } : null;
   }).filter(Boolean);
   let preferredId = preferredLeagueId;
   if (!preferredId) {
@@ -1490,8 +1490,43 @@ function profileModal() {
 }
 function leaguePickerModal() {
   if (!V.leaguePickerOpen || !AUTH.session) return "";
-  const rows = LEAGUES.items.map((league) => `<button class="league-picker-option ${league.id === S.league?.id ? "is-current" : ""}" type="button" onclick="switchLeague('${esc(league.id)}')" ${LEAGUES.busy ? "disabled" : ""}><span><b>${esc(league.name)}</b><small>${league.id === S.league?.id ? "Liga actual" : `Jugando como ${esc(league.displayName)}`}</small></span>${league.id === S.league?.id ? '<strong>ACTIVA</strong>' : '<i aria-hidden="true">→</i>'}</button>`).join("");
+  const rows = LEAGUES.items.map((league) => {
+    const isOwner = league.ownerId === AUTH.session.user.id;
+    return `<div class="league-picker-row"><button class="league-picker-option ${league.id === S.league?.id ? "is-current" : ""}" type="button" onclick="switchLeague('${esc(league.id)}')" ${LEAGUES.busy ? "disabled" : ""}><span><b>${esc(league.name)}</b><small>${league.id === S.league?.id ? "Liga actual" : `Jugando como ${esc(league.displayName)}`}${isOwner ? " · Creador" : ""}</small></span>${league.id === S.league?.id ? '<strong>ACTIVA</strong>' : '<i aria-hidden="true">→</i>'}</button>${isOwner ? `<button class="league-delete-button" type="button" onclick="deleteLeague('${esc(league.id)}')" aria-label="Borrar liga ${esc(league.name)}" title="Borrar liga" ${LEAGUES.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>` : ""}</div>`;
+  }).join("");
   return `<div class="instructions-overlay league-picker-overlay" role="presentation" onclick="if(event.target===this)closeLeaguePicker()"><section class="instructions-dialog league-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="league-picker-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TUS COMPETICIONES</span><h2 id="league-picker-title">Mis ligas</h2><p>Cambia de liga o únete a otra con su código.</p></div><button class="instructions-close league-picker-close" type="button" onclick="closeLeaguePicker()" aria-label="Cerrar ligas">×</button></header><div class="league-picker-list">${rows || '<p class="profile-hint">Todavía no perteneces a ninguna liga.</p>'}</div><form class="league-picker-join" onsubmit="event.preventDefault();joinAnotherLeague()"><label for="league-join-code">Unirme a otra liga</label><div><input class="t" id="league-join-code" maxlength="10" autocomplete="off" placeholder="Código de invitación" required ${LEAGUES.busy ? "disabled" : ""}><button class="btn" type="submit" ${LEAGUES.busy ? "disabled" : ""}>${LEAGUES.busy ? "Uniéndote…" : "Unirme"}</button></div></form>${LEAGUES.error ? `<p class="profile-error" role="alert">${esc(LEAGUES.error)}</p>` : ""}</section></div>`;
+}
+async function deleteLeague(leagueId) {
+  const league = LEAGUES.items.find((item) => item.id === leagueId);
+  if (!league || league.ownerId !== AUTH.session?.user?.id || LEAGUES.busy) return;
+  const confirmed = window.confirm(`¿Borrar la liga «${league.name}» para siempre?\n\nSe eliminarán para todos sus miembros los pronósticos, mensajes, premios e historial de esta liga. Esta acción no se puede deshacer.`);
+  if (!confirmed) return;
+  LEAGUES.busy = true;
+  LEAGUES.error = "";
+  let deleted = false;
+  render();
+  try {
+    const { error } = await AUTH.client.rpc("delete_league", { p_league_id: leagueId });
+    if (error) throw error;
+    deleted = true;
+    LEAGUES.items = LEAGUES.items.filter((item) => item.id !== leagueId);
+    if (S.league?.id === leagueId) {
+      const nextLeague = LEAGUES.items[0];
+      if (nextLeague) await activateLeague(nextLeague.id, nextLeague.displayName);
+      else {
+        await loadCloudLeague();
+        V.leaguePickerOpen = false;
+      }
+    }
+    toast(`La liga «${league.name}» se ha borrado.`);
+  } catch (error) {
+    LEAGUES.error = deleted
+      ? `La liga se borró, pero no se pudo actualizar la pantalla: ${errorText(error)}. Recarga la página.`
+      : `No se pudo borrar la liga: ${errorText(error)}`;
+  } finally {
+    LEAGUES.busy = false;
+    render();
+  }
 }
 const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria-label="PLENO, la porra de LaLiga">
   <div class="auth-brand-name"><img class="auth-brand-mark" src="icon.svg" alt=""><span>PLENO</span><i>FÚTBOL · AMIGOS · PORRA</i></div>
