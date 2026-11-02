@@ -420,7 +420,8 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
   .home-dashboard .home-stats>div{padding:13px 10px}
   .home-dashboard .home-stats b{font-size:clamp(23px,7vw,30px)}
   .home-dashboard .home-scout{min-height:68px}
-  .mobile-nav-shell{position:fixed;right:0;bottom:0;left:0;z-index:7;display:block;padding:0 10px env(safe-area-inset-bottom,0px);border-top:1px solid #ffffff15;background:rgba(10,10,12,.84);backdrop-filter:blur(20px) saturate(1.35);-webkit-backdrop-filter:blur(20px) saturate(1.35)}
+  .mobile-nav-shell{position:fixed;right:0;bottom:0;left:0;z-index:7;display:block;padding:0 10px env(safe-area-inset-bottom,0px)}
+  .mobile-nav-shell:before{position:absolute;inset:0;border-top:1px solid #ffffff15;background:rgba(10,10,12,.84);backdrop-filter:blur(20px) saturate(1.35);-webkit-backdrop-filter:blur(20px) saturate(1.35);content:"";pointer-events:none}
   .mobile-bottom-nav{position:relative;z-index:2;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:min(100%,540px);min-height:64px;margin:0 auto}
   .mobile-nav-item{display:flex;min-width:0;min-height:60px;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:7px 3px;border:0;border-radius:12px;background:transparent;color:#88848d;font:600 10px/1 Inter,sans-serif;transition:color .16s,background .16s}
   .mobile-nav-item svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
