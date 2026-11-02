@@ -16,11 +16,13 @@ const SB_KEY = "sb_publishable_It1kV2ryR-toeyDeA4WNyw_aXcPThkG";
 let S = { league: null, me: "", preds: {}, joker: {}, friends: {}, th: "carbon" };
 try { Object.assign(S, JSON.parse(localStorage.getItem("pleno"))); } catch {}
 const save = () => { try { localStorage.setItem("pleno", JSON.stringify(S)); } catch {} };
-const V = { tab: "i", team: null, sub: "res", md: null, challengeMd: null, leagueSection: "ranking", instructionsOpen: false, instructionsNeedsFocus: false, tbl: "all", q: "", tabDirection: 1 };
+const V = { tab: "i", team: null, sub: "res", md: null, challengeMd: null, leagueSection: "ranking", instructionsOpen: false, instructionsNeedsFocus: false, profileOpen: false, profileNeedsFocus: false, leaguePickerOpen: false, leaguePickerNeedsFocus: false, tbl: "all", q: "", tabDirection: 1 };
 const D = { ready: false, err: null, matches: [], table: [], tH: [], tA: [], teams: [], by: {}, scorers: [], cur: 1, seasonStartYear: 0, tc: {}, polling: false, lastMatchesUpdate: 0, lastStandingsUpdate: 0, lastTeamsUpdate: 0, lastScorersUpdate: 0, lastStandingsPoll: 0, lastTeamsPoll: 0, lastScorersPoll: 0, matchesTimestampEstimated: false, standingsTimestampEstimated: false, teamsTimestampEstimated: false, scorersTimestampEstimated: false, matchesStale: false, standingsStale: false, teamsStale: false, scorersStale: false, matchesError: "", standingsError: "", teamsError: "", scorersError: "", minigames: { round_bonuses: [], minute_bonuses: [], red_cards: [] } };
 const AUTH = { client: null, session: null, ready: false, busy: false, syncing: false, minigameSyncing: false, mode: "login", email: "", error: "" };
 const ROOM = { loading: false, loaded: false, busy: false, archiving: false, error: "", archiveError: "", isAdmin: false, debts: [], chronicles: [], hallSeasons: [], dinnerLeaders: [], channel: null, leagueId: null, updatedAt: 0 };
 const CHAT = { loading: false, sending: false, uploadingAvatar: false, error: "", messages: [], avatars: {}, avatarPaths: {}, channel: null, channelLeagueId: null, loadedLeagueId: null, subscribed: false, input: "" };
+const PROFILE = { loading: false, error: "" };
+const LEAGUES = { items: [], loading: false, busy: false, error: "" };
 const GAME = { loading: false, busy: false, spinning: false, spinStage: "", wheelRotation: 0, wheelResult: null, data: null, error: "", date: "" };
 const WHEEL_SECTIONS = [
   { type: "boots_gold", title: "Botas de Oro", subtitle: "+5 puntos" },
@@ -74,24 +76,35 @@ function closeInstructions() {
   });
 }
 function syncInstructionsModal() {
-  const modal = document.querySelector(".instructions-overlay");
+  const modal = document.querySelector(".instructions-overlay, .profile-overlay, .league-picker-overlay");
   document.body.classList.toggle("instructions-visible", Boolean(modal));
-  if (modal && V.instructionsNeedsFocus) {
+  if (modal && V.leaguePickerOpen && (V.leaguePickerNeedsFocus || !modal.contains(document.activeElement))) {
+    V.leaguePickerNeedsFocus = false;
+    modal.querySelector(".league-picker-close")?.focus();
+  } else if (modal && V.profileOpen && (V.profileNeedsFocus || !modal.contains(document.activeElement))) {
+    V.profileNeedsFocus = false;
+    modal.querySelector(".profile-close")?.focus();
+  } else if (modal && V.instructionsNeedsFocus) {
     V.instructionsNeedsFocus = false;
     modal.querySelector(".instructions-close")?.focus();
   }
 }
 function handleInstructionsKeydown(event) {
-  if (!V.instructionsOpen) return;
+  const modal = V.leaguePickerOpen
+    ? document.querySelector(".league-picker-dialog")
+    : V.profileOpen
+    ? document.querySelector(".profile-dialog")
+    : V.instructionsOpen ? document.querySelector(".instructions-dialog") : null;
+  if (!modal) return;
   if (event.key === "Escape") {
     event.preventDefault();
-    closeInstructions();
+    if (V.leaguePickerOpen) closeLeaguePicker();
+    else if (V.profileOpen) closeProfile();
+    else closeInstructions();
     return;
   }
   if (event.key !== "Tab") return;
-  const modal = document.querySelector(".instructions-dialog");
-  if (!modal) return;
-  const focusable = [...modal.querySelectorAll('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')];
+  const focusable = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')];
   if (!focusable.length) return;
   const first = focusable[0], last = focusable[focusable.length - 1];
   if (event.shiftKey && document.activeElement === first) {
@@ -153,7 +166,7 @@ async function api(p, q = {}) {
   return j;
 }
 const toast = (m) => { const t = $("#toast"); t.textContent = m; t.classList.add("v"); setTimeout(() => t.classList.remove("v"), 2600); };
-const fb = (i) => { i.outerHTML = `<span class="bd ${i.classList.contains("l") ? "l" : ""}">${esc(i.dataset.t)}</span>`; };
+const fb = (i) => { i.outerHTML = `<span class="crest-fallback ${i.classList.contains("l") ? "l" : ""}">${esc(i.dataset.t)}</span>`; };
 const crest = (t, c = "") => `<img class="cr ${c}" src="${esc(t.crest)}" alt="" loading="lazy" data-t="${esc(t.tla || (t.name || "").slice(0, 3).toUpperCase())}" onerror="fb(this)">`;
 const clubName = (t) => t.name || t.shortName || "Club";
 const nm = (t) => esc(clubName(t));
@@ -431,16 +444,29 @@ async function loadCloudLeague(preferredLeagueId = null) {
   let query = AUTH.client.from("league_members")
     .select("league_id,display_name,leagues!inner(id,name,invite_code)")
     .eq("user_id", AUTH.session.user.id);
-  if (preferredLeagueId) query = query.eq("league_id", preferredLeagueId);
-  const { data, error } = await query.order("joined_at", { ascending: true }).limit(1);
+  const { data, error } = await query.order("joined_at", { ascending: true });
   if (error) throw error;
-  const member = data?.[0];
+  LEAGUES.items = (data || []).map((member) => {
+    const league = Array.isArray(member.leagues) ? member.leagues[0] : member.leagues;
+    return league ? { id: league.id, name: league.name, code: league.invite_code, displayName: member.display_name } : null;
+  }).filter(Boolean);
+  let preferredId = preferredLeagueId;
+  if (!preferredId) {
+    try { preferredId = localStorage.getItem(`pleno:activeLeague:${AUTH.session.user.id}`); }
+    catch {}
+  }
+  const member = LEAGUES.items.find((league) => league.id === preferredId)
+    ? (data || []).find((row) => row.league_id === preferredId)
+    : (data || [])[0];
   if (!member) {
     resetLeagueState();
+    LEAGUES.items = [];
     return;
   }
   const league = Array.isArray(member.leagues) ? member.leagues[0] : member.leagues;
   if (!league) throw new Error("No se pudo cargar la liga asociada a tu cuenta");
+  try { localStorage.setItem(`pleno:activeLeague:${AUTH.session.user.id}`, league.id); }
+  catch { toast("No se pudo guardar la liga activa en este navegador."); }
   S.league = { id: league.id, name: league.name, code: league.invite_code };
   S.me = member.display_name;
   await syncLeagueData(league.id, AUTH.session.user.id);
@@ -495,6 +521,12 @@ async function handleAuthSession(session) {
   AUTH.userId = userId;
   AUTH.error = "";
   if (previousId !== userId) {
+    V.profileOpen = false;
+    V.profileNeedsFocus = false;
+    V.leaguePickerOpen = false;
+    V.leaguePickerNeedsFocus = false;
+    PROFILE.loading = false;
+    PROFILE.error = "";
     resetLeagueState();
     GAME.data = null;
     GAME.score = 0;
@@ -853,6 +885,7 @@ async function uploadProfilePhoto(event) {
   }
   CHAT.uploadingAvatar = true;
   CHAT.error = "";
+  PROFILE.error = "";
   render();
   let uploadedPath = "";
   try {
@@ -887,7 +920,89 @@ async function uploadProfilePhoto(event) {
       if (cleanupError) console.warn(`No se pudo limpiar la foto de perfil sin guardar: ${cleanupError.message}`);
     }
     CHAT.error = errorText(error);
+    if (V.profileOpen) PROFILE.error = CHAT.error;
     toast(`No se pudo actualizar la foto: ${CHAT.error}`);
+  } finally {
+    CHAT.uploadingAvatar = false;
+    render();
+  }
+}
+function openProfile() {
+  if (!AUTH.session || V.profileOpen) return;
+  V.profileOpen = true;
+  V.profileNeedsFocus = true;
+  PROFILE.error = "";
+  render();
+  loadOwnProfilePhoto();
+}
+function closeProfile() {
+  if (!V.profileOpen) return;
+  V.profileOpen = false;
+  document.body.classList.remove("instructions-visible");
+  render();
+  requestAnimationFrame(() => document.querySelector(".profile-button")?.focus());
+}
+async function loadOwnProfilePhoto() {
+  const userId = AUTH.session?.user?.id;
+  if (!userId || !AUTH.client) return;
+  PROFILE.loading = true;
+  PROFILE.error = "";
+  render();
+  try {
+    const { data, error } = await AUTH.client.from("user_profiles")
+      .select("avatar_path")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    if (AUTH.session?.user?.id !== userId) return;
+    const path = data?.avatar_path || "";
+    if (path) {
+      const { data: signed, error: signedError } = await AUTH.client.storage.from("room-avatars")
+        .createSignedUrl(path, 3600);
+      if (signedError) throw signedError;
+      CHAT.avatarPaths[userId] = path;
+      CHAT.avatars[userId] = signed.signedUrl;
+    } else {
+      delete CHAT.avatarPaths[userId];
+      delete CHAT.avatars[userId];
+    }
+  } catch (error) {
+    if (AUTH.session?.user?.id === userId) PROFILE.error = errorText(error);
+  } finally {
+    if (AUTH.session?.user?.id === userId) {
+      PROFILE.loading = false;
+      if (V.profileOpen) render();
+    }
+  }
+}
+async function removeProfilePhoto() {
+  const userId = AUTH.session?.user?.id;
+  if (!userId || !AUTH.client || CHAT.uploadingAvatar) return;
+  CHAT.uploadingAvatar = true;
+  PROFILE.error = "";
+  render();
+  const oldPath = CHAT.avatarPaths[userId] || "";
+  try {
+    const { error } = await AUTH.client.from("user_profiles").upsert({
+      user_id: userId,
+      avatar_path: null,
+      updated_at: new Date().toISOString()
+    });
+    if (error) throw error;
+    delete CHAT.avatarPaths[userId];
+    delete CHAT.avatars[userId];
+    if (oldPath) {
+      const { error: removeError } = await AUTH.client.storage.from("room-avatars").remove([oldPath]);
+      if (removeError) {
+        console.warn(`No se pudo limpiar la foto de perfil anterior: ${removeError.message}`);
+        toast("Foto quitada. No se pudo borrar el archivo anterior.");
+        return;
+      }
+    }
+    toast("Foto de perfil quitada.");
+  } catch (error) {
+    PROFILE.error = errorText(error);
+    toast(`No se pudo quitar la foto: ${PROFILE.error}`);
   } finally {
     CHAT.uploadingAvatar = false;
     render();
@@ -1281,7 +1396,8 @@ function tJuego() {
   const spinSection = spin ? WHEEL_SECTIONS[Number(spin.section_index) - 1] : null;
   const finalReward = spin?.final_reward ? WHEEL_SECTIONS.find((section) => section.type === spin.final_reward) : null;
   const wheelResult = spin && !GAME.spinning ? `<div class="scout-wheel-result ${spin.final_reward === "var_annulled" ? "is-zero" : ""}"><b>${spin.outcome === "double_or_nothing" ? "DOBLE O NADA · RE-GIRO" : esc(spinSection?.title || "RESULTADO")}</b><strong>${spin.final_reward === "var_annulled" ? "GOL ANULADO" : `${esc(finalReward?.title || "")}${spin.quantity > 1 ? ` ×${spin.quantity}` : ""}`}</strong><small>${spin.final_reward === "var_annulled" ? "La recompensa de esta ruleta se ha perdido." : esc(finalReward?.subtitle || "")}</small></div>` : "";
-  const wheelSection = `<section class="scout-panel scout-wheel-panel"><div class="scout-panel-head"><div><span class="scout-kicker">PREMIO DE HOY</span><h2>La Ruleta del VAR</h2></div><span class="scout-wheel-odds">6 sectores · 1/6 cada uno</span></div><div class="scout-wheel-layout"><div class="scout-wheel-frame"><i class="scout-wheel-pointer"></i><svg class="scout-wheel-disc ${GAME.spinning ? "is-spinning" : ""}" viewBox="0 0 240 240" style="--wheel-rotation:${GAME.wheelRotation}deg" role="img" aria-label="Ruleta con seis recompensas">${wheel}<circle cx="120" cy="120" r="23" fill="#0c1112" stroke="#90a6a0" stroke-width="2"/><text x="120" y="123" text-anchor="middle" fill="#fff" font-size="8" font-weight="900">PLENO</text></svg></div><div class="scout-wheel-copy"><p>${solved ? "Premio aleatorio, resuelto en Supabase. Doble o Nada re-gira por una recompensa doble; Gol Anulado puede dejarte sin ella." : "Resuelve El Fichaje Clandestino para desbloquear un giro diario."}</p><button class="btn scout-spin" onclick="spinDailyVar()" ${!solved || data.spin || GAME.busy || GAME.spinning ? "disabled" : ""}>${GAME.spinning ? (GAME.spinStage === "second" ? "Doble o Nada: segundo giro…" : "El VAR está revisando…") : data?.spin ? "Giro ya utilizado" : solved ? "Girar ruleta" : "Desbloqueada al acertar"}</button></div></div>${wheelResult}</section>`;
+  const canSpin = Boolean(solved && !data.spin && !GAME.busy && !GAME.spinning);
+  const wheelSection = `<section class="scout-panel scout-wheel-panel"><div class="scout-panel-head"><div><span class="scout-kicker">PREMIO DE HOY</span><h2>La Ruleta del VAR</h2></div><span class="scout-wheel-odds">6 sectores · 1/6 cada uno</span></div><div class="scout-wheel-layout"><div class="scout-wheel-frame"><i class="scout-wheel-pointer"></i><svg class="scout-wheel-disc ${GAME.spinning ? "is-spinning" : ""}" viewBox="0 0 240 240" style="--wheel-rotation:${GAME.wheelRotation}deg" role="img" aria-label="Ruleta con seis recompensas">${wheel}<circle cx="120" cy="120" r="23" fill="#0c1112" stroke="#90a6a0" stroke-width="2"/><text x="120" y="123" text-anchor="middle" fill="#fff" font-size="8" font-weight="900">PLENO</text></svg></div><div class="scout-wheel-copy"><p>${solved ? "Premio aleatorio, resuelto en Supabase. Doble o Nada re-gira por una recompensa doble; Gol Anulado puede dejarte sin ella." : "Resuelve El Fichaje Clandestino para desbloquear un giro diario."}</p><button class="btn scout-spin ${canSpin ? "is-available" : ""}" onclick="spinDailyVar()" ${!canSpin ? "disabled" : ""}>${GAME.spinning ? (GAME.spinStage === "second" ? "Doble o Nada: segundo giro…" : "El VAR está revisando…") : data?.spin ? "Giro ya utilizado" : solved ? "Girar ruleta" : "Desbloqueada al acertar"}</button></div></div>${wheelResult}</section>`;
 
   const match = featuredMatch();
   const nextMatch = D.matches
@@ -1341,9 +1457,27 @@ function tJuego() {
 
 /* ---------- vistas ---------- */
 const infoButton = () => `<button class="info-button" type="button" onclick="openInstructions()" aria-label="Cómo se juega" title="Cómo se juega"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg></button>`;
+const profileButton = () => `<button class="profile-button" type="button" onclick="openProfile()" aria-label="Abrir perfil" title="Mi perfil"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg></button>`;
 function instructionsModal() {
   if (!V.instructionsOpen || !AUTH.session) return "";
   return `<div class="instructions-overlay" role="presentation" onclick="if(event.target===this)closeInstructions()"><section class="instructions-dialog" role="dialog" aria-modal="true" aria-labelledby="instructions-title" aria-describedby="instructions-intro" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">GUÍA RÁPIDA · PLENO</span><h2 id="instructions-title">Aquí se juega así.</h2><p id="instructions-intro">LaLiga se disfruta más cuando cada partido cuenta.</p></div><button class="instructions-close" type="button" onclick="closeInstructions()" aria-label="Cerrar instrucciones">×</button></header><div class="instructions-grid"><article class="instructions-card"><span class="instructions-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 8h18v12H3zM7 8V5h10v3M7 13h4m-4 3h7"/></svg></span><div><h3>El objetivo</h3><p>Adivina los resultados de LaLiga, suma puntos y compite con tus amigos. Crea una liga o únete con su código.</p></div></article><article class="instructions-card"><span class="instructions-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3z"/></svg></span><div><h3>Puntúa por acertar</h3><p><b>10 puntos</b> por pleno, <b>7</b> por acertar el signo y la diferencia, y <b>3</b> por acertar el signo del resultado.</p></div></article><article class="instructions-card"><span class="instructions-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v18m6-15H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H5"/></svg></span><div><h3>El comodín</h3><p>Activa tu <b>Joker x2</b> en un partido y duplica los puntos que consigas en ese pronóstico.</p></div></article><article class="instructions-card"><span class="instructions-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.5"/><path d="m4 4 16 16"/></svg></span><div><h3>Modo ciego</h3><p>Las porras de los demás permanecen ocultas hasta el pitido inicial. Así nadie puede copiar antes de jugar.</p></div></article></div><footer class="instructions-footer"><span>⚽ Una hora antes del partido, los pronósticos se bloquean.</span><button class="btn instructions-done" type="button" onclick="closeInstructions()">¡A jugar!</button></footer></section></div>`;
+}
+function profileModal() {
+  if (!V.profileOpen || !AUTH.session) return "";
+  const userId = AUTH.session.user.id;
+  const source = CHAT.avatars[userId];
+  const profileBusy = CHAT.uploadingAvatar || PROFILE.loading;
+  const initials = [...String(S.me || AUTH.session.user.email || "Tú").trim()].slice(0, 2).join("").toUpperCase();
+  const image = source
+    ? `<img src="${esc(source)}" alt="Foto de perfil de ${esc(S.me || "tu cuenta")}">`
+    : `<span class="profile-photo-placeholder">${esc(initials || "?")}</span>`;
+  const uploadLabel = source ? "Cambiar foto" : "Añadir foto";
+  return `<div class="instructions-overlay profile-overlay" role="presentation" onclick="if(event.target===this)closeProfile()"><section class="instructions-dialog profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TU CUENTA · PLENO</span><h2 id="profile-title">Mi perfil</h2><p>${esc(S.me || AUTH.session.user.email || "Jugador")}</p></div><button class="instructions-close profile-close" type="button" onclick="closeProfile()" aria-label="Cerrar perfil">×</button></header><div class="profile-photo-stage">${image}</div>${PROFILE.loading ? '<p class="profile-status" role="status">Cargando foto de perfil…</p>' : ""}${PROFILE.error ? `<p class="profile-error" role="alert">No se pudo completar la acción: ${esc(PROFILE.error)}</p>` : ""}<div class="profile-actions"><label class="btn profile-upload ${profileBusy || !S.league?.id ? "is-disabled" : ""}">${CHAT.uploadingAvatar ? "Guardando…" : uploadLabel}<input type="file" accept="image/*" onchange="uploadProfilePhoto(event)" ${profileBusy || !S.league?.id ? "disabled" : ""}></label>${source ? `<button class="btn ghost profile-remove" type="button" onclick="removeProfilePhoto()" ${profileBusy ? "disabled" : ""}>Quitar foto</button>` : ""}</div>${!S.league?.id ? '<p class="profile-hint">Únete a una liga para añadir una foto de perfil.</p>' : ""}</section></div>`;
+}
+function leaguePickerModal() {
+  if (!V.leaguePickerOpen || !AUTH.session) return "";
+  const rows = LEAGUES.items.map((league) => `<button class="league-picker-option ${league.id === S.league?.id ? "is-current" : ""}" type="button" onclick="switchLeague('${esc(league.id)}')" ${LEAGUES.busy ? "disabled" : ""}><span><b>${esc(league.name)}</b><small>${league.id === S.league?.id ? "Liga actual" : `Jugando como ${esc(league.displayName)}`}</small></span>${league.id === S.league?.id ? '<strong>ACTIVA</strong>' : '<i aria-hidden="true">→</i>'}</button>`).join("");
+  return `<div class="instructions-overlay league-picker-overlay" role="presentation" onclick="if(event.target===this)closeLeaguePicker()"><section class="instructions-dialog league-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="league-picker-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TUS COMPETICIONES</span><h2 id="league-picker-title">Mis ligas</h2><p>Cambia de liga o únete a otra con su código.</p></div><button class="instructions-close league-picker-close" type="button" onclick="closeLeaguePicker()" aria-label="Cerrar ligas">×</button></header><div class="league-picker-list">${rows || '<p class="profile-hint">Todavía no perteneces a ninguna liga.</p>'}</div><form class="league-picker-join" onsubmit="event.preventDefault();joinAnotherLeague()"><label for="league-join-code">Unirme a otra liga</label><div><input class="t" id="league-join-code" maxlength="10" autocomplete="off" placeholder="Código de invitación" required ${LEAGUES.busy ? "disabled" : ""}><button class="btn" type="submit" ${LEAGUES.busy ? "disabled" : ""}>${LEAGUES.busy ? "Uniéndote…" : "Unirme"}</button></div></form>${LEAGUES.error ? `<p class="profile-error" role="alert">${esc(LEAGUES.error)}</p>` : ""}</section></div>`;
 }
 const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria-label="PLENO, la porra de LaLiga">
   <div class="auth-brand-name"><img class="auth-brand-mark" src="icon.svg" alt=""><span>PLENO</span><i>FÚTBOL · AMIGOS · PORRA</i></div>
@@ -1389,6 +1523,8 @@ async function activateLeague(id, displayName) {
     if (ROOM.channel && AUTH.client) AUTH.client.removeChannel(ROOM.channel);
     Object.assign(ROOM, { loading: false, loaded: false, busy: false, archiving: false, error: "", archiveError: "", isAdmin: false, debts: [], chronicles: [], hallSeasons: [], dinnerLeaders: [], channel: null, channelLeagueId: null, leagueId: null, updatedAt: 0 });
   }
+  if (CHAT.channel && AUTH.client) await AUTH.client.removeChannel(CHAT.channel);
+  Object.assign(CHAT, { loading: false, sending: false, uploadingAvatar: false, error: "", messages: [], avatars: {}, avatarPaths: {}, channel: null, channelLeagueId: null, loadedLeagueId: null, subscribed: false, input: "" });
   const { data, error } = await AUTH.client.from("leagues").select("id,name,invite_code").eq("id", id).single();
   if (error) throw error;
   PENDING_PREDS.clear();
@@ -1400,6 +1536,11 @@ async function activateLeague(id, displayName) {
   S.joker = {};
   S.friends = {};
   await loadCloudLeague(id);
+  GAME.data = null;
+  GAME.date = "";
+  GAME.wheelResult = null;
+  if (V.tab === "g") loadScoutGame();
+  refreshMinigameScoreData(false);
 }
 async function mk() {
   const n = $("#ln").value.trim(), me = $("#gn").value.trim();
@@ -1420,6 +1561,64 @@ async function jn() {
     await activateLeague(data, me);
     render();
   } catch (e) { AUTH.error = `No se pudo unir a la liga: ${e.message}`; render(); }
+}
+function openLeaguePicker() {
+  if (!AUTH.session || V.leaguePickerOpen) return;
+  LEAGUES.error = "";
+  V.leaguePickerOpen = true;
+  V.leaguePickerNeedsFocus = true;
+  render();
+}
+function closeLeaguePicker() {
+  if (!V.leaguePickerOpen) return;
+  V.leaguePickerOpen = false;
+  document.body.classList.remove("instructions-visible");
+  render();
+  requestAnimationFrame(() => document.querySelector(".league-switcher")?.focus());
+}
+async function joinAnotherLeague() {
+  const code = $("#league-join-code")?.value.trim().toUpperCase() || "";
+  if (!code) {
+    LEAGUES.error = "Escribe el código de invitación.";
+    render();
+    return;
+  }
+  if (LEAGUES.busy) return;
+  LEAGUES.busy = true;
+  LEAGUES.error = "";
+  render();
+  try {
+    const { data, error } = await AUTH.client.rpc("join_league", {
+      p_invite_code: code,
+      p_display_name: S.me || AUTH.session.user.email || "Jugador"
+    });
+    if (error) throw error;
+    await activateLeague(data, S.me || AUTH.session.user.email || "Jugador");
+    V.leaguePickerOpen = false;
+    toast("Te has unido a la liga.");
+  } catch (error) {
+    LEAGUES.error = `No se pudo unir a la liga: ${errorText(error)}`;
+  } finally {
+    LEAGUES.busy = false;
+    render();
+  }
+}
+async function switchLeague(id) {
+  if (!id || id === S.league?.id || LEAGUES.busy) return closeLeaguePicker();
+  LEAGUES.busy = true;
+  LEAGUES.error = "";
+  render();
+  try {
+    const league = LEAGUES.items.find((item) => item.id === id);
+    if (!league) throw new Error("No se encontró esa liga en tu cuenta.");
+    await activateLeague(id, league.displayName);
+    V.leaguePickerOpen = false;
+  } catch (error) {
+    LEAGUES.error = `No se pudo cambiar de liga: ${errorText(error)}`;
+  } finally {
+    LEAGUES.busy = false;
+    render();
+  }
 }
 
 const status = (m) => live(m) ? `<span class="live">● EN DIRECTO</span>` : fin(m) ? "Finalizado" : m.status === "POSTPONED" ? "Aplazado" : fmtD(m.utcDate);
@@ -1650,10 +1849,10 @@ function render() {
   const themeName = { carbon: "carbón", blanco: "claro", medianoche: "medianoche" }[S.th] || "carbón";
   const syncError = Boolean(D.matchesError || D.standingsError || D.teamsError || D.scorersError);
   const syncStale = D.matchesStale || D.standingsStale || D.teamsStale || D.scorersStale;
-  a.innerHTML = `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><span class="pill">${esc(S.league.name)}</span><span class="sp"></span><div class="top-actions"><button class="btn ghost theme-button ${S.th}" onclick="cycleTheme()" aria-label="Cambiar fondo. Tema actual: ${themeName}" title="Cambiar fondo · ${themeName}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></button><button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div><nav aria-label="Secciones principales">${tabs.map(([k, n]) => `<button class="${V.tab === k ? "on" : ""}" onclick="switchTab('${k}')" ${V.tab === k ? 'aria-current="page"' : ""}>${n}</button>`).join("")}</nav><div class="data-sync ${syncError ? "has-error" : syncStale ? "is-stale" : ""}" aria-label="Estado de actualización de datos" title="Actualización automática: partidos cada 30 segundos, clasificación cada minuto, goleadores cada 10 minutos y clubes cada día"><i></i><span class="${freshnessClass(D.matchesStale, D.matchesError)}">${esc(freshnessLabel("Partidos", D.lastMatchesUpdate, D.matchesStale, D.matchesError))}</span><span class="${freshnessClass(D.standingsStale, D.standingsError)}">${esc(freshnessLabel("Clasificación", D.lastStandingsUpdate, D.standingsStale, D.standingsError))}</span><span class="${freshnessClass(D.teamsStale, D.teamsError)}">${esc(freshnessLabel("Clubes", D.lastTeamsUpdate, D.teamsStale, D.teamsError))}</span><span class="${freshnessClass(D.scorersStale, D.scorersError)}">${esc(freshnessLabel("Goleadores", D.lastScorersUpdate, D.scorersStale, D.scorersError))}</span></div></div><main class="tab-content" style="--tab-shift:${V.tabDirection * 1}">${body}</main>`;
+  a.innerHTML = `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><button class="league-switcher" type="button" onclick="openLeaguePicker()" aria-label="Mis ligas: cambiar de liga o unirme a otra" title="Mis ligas · cambiar de liga o unirme a otra"><span class="league-switcher-label">Mis ligas</span><b>${esc(S.league.name)}</b><i aria-hidden="true">⌄</i></button><span class="sp"></span><div class="top-actions"><button class="btn ghost theme-button ${S.th}" onclick="cycleTheme()" aria-label="Cambiar fondo. Tema actual: ${themeName}" title="Cambiar fondo · ${themeName}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></button><button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div><nav aria-label="Secciones principales">${tabs.map(([k, n]) => `<button class="${V.tab === k ? "on" : ""}" onclick="switchTab('${k}')" ${V.tab === k ? 'aria-current="page"' : ""}>${n}</button>`).join("")}</nav><div class="data-sync ${syncError ? "has-error" : syncStale ? "is-stale" : ""}" aria-label="Estado de actualización de datos" title="Actualización automática: partidos cada 30 segundos, clasificación cada minuto, goleadores cada 10 minutos y clubes cada día"><i></i><span class="${freshnessClass(D.matchesStale, D.matchesError)}">${esc(freshnessLabel("Partidos", D.lastMatchesUpdate, D.matchesStale, D.matchesError))}</span><span class="${freshnessClass(D.standingsStale, D.standingsError)}">${esc(freshnessLabel("Clasificación", D.lastStandingsUpdate, D.standingsStale, D.standingsError))}</span><span class="${freshnessClass(D.teamsStale, D.teamsError)}">${esc(freshnessLabel("Clubes", D.lastTeamsUpdate, D.teamsStale, D.teamsError))}</span><span class="${freshnessClass(D.scorersStale, D.scorersError)}">${esc(freshnessLabel("Goleadores", D.lastScorersUpdate, D.scorersStale, D.scorersError))}</span></div></div><main class="tab-content" style="--tab-shift:${V.tabDirection * 1}">${body}</main>`;
   const topActions = a.querySelector(".top-actions");
-  if (topActions) topActions.insertAdjacentHTML("afterbegin", infoButton());
-  a.insertAdjacentHTML("beforeend", instructionsModal());
+  if (topActions) topActions.insertAdjacentHTML("afterbegin", infoButton() + profileButton());
+  a.insertAdjacentHTML("beforeend", instructionsModal() + profileModal() + leaguePickerModal());
   syncInstructionsModal();
   const syncStatus = a.querySelector(".data-sync");
   if (syncStatus) {
