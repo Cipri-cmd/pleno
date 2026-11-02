@@ -357,3 +357,4 @@ nav button.on{position:relative;overflow:hidden}nav button.on:after{position:abs
   .auth-route,.auth-player,.auth-ball,.auth-scoreboard,.auth-score-light,.auth-pitch-particle,.auth-card.card:before{animation:none}
   .auth-card .auth-submit,.auth-card .auth-link:after{transition:none}
 }
+.auth-shell,#app .auth-shell *{font-family:"Clash Display",sans-serif}
