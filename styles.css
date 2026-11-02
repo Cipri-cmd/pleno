@@ -251,9 +251,11 @@ nav button.on{position:relative;overflow:hidden}nav button.on:after{position:abs
 .auth-brand-name i{align-self:center;margin:3px 0 0 1px;color:#77747a;font:700 8px/1.2 Inter,sans-serif;letter-spacing:1.55px}
 .auth-eyebrow{display:flex;align-items:center;gap:8px;width:fit-content;margin-top:clamp(34px,6vh,63px);padding:8px 11px;border:1px solid #ff824329;border-radius:999px;background:#ff66380b;color:#ff9862;font:800 9px/1 Inter,sans-serif;letter-spacing:1.6px}
 .auth-eyebrow>span{font-size:12px}
-.auth-brand h1{max-width:740px;margin:21px 0 0;color:#f7f5f4;font:700 clamp(42px,5.25vw,72px)/.99 "Space Grotesk",sans-serif;letter-spacing:-.065em;text-transform:uppercase;font-style:italic}
-.auth-brand h1 span{display:block;width:fit-content;margin-top:3px;padding:0 .07em .06em 0;background:linear-gradient(100deg,#ff9b4a 2%,#ff602e 47%,#ef3156 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 22px #fb50302a);line-height:1.04}
-.auth-brand>p{max-width:470px;margin:19px 0 0;color:#aaa6ac;font:400 14px/1.8 Inter,sans-serif;letter-spacing:-.12px}
+.auth-brand h1{max-width:740px;margin:21px 0 0;color:#f7f5f4;font:800 clamp(38px,4.7vw,62px)/.98 "Barlow Condensed",sans-serif;letter-spacing:.005em;text-transform:uppercase}
+.auth-brand h1 span{display:block;width:fit-content;margin-top:3px;padding:0 .07em .06em 0}
+.auth-brand h1 .auth-heading-line{background:none;-webkit-background-clip:border-box;background-clip:border-box;color:#f7f5f4;filter:none;line-height:.98}
+.auth-brand h1 .auth-heading-accent{background:linear-gradient(100deg,#ffad61 2%,#ff693b 50%,#f04459 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 20px #fb503024);font-size:clamp(54px,6.8vw,88px);font-weight:900;line-height:1}
+.auth-brand>p{max-width:470px;margin:16px 0 0;color:#aaa6ac;font:400 14px/1.65 Inter,sans-serif;letter-spacing:0}
 .auth-pitch-wrap{position:relative;width:min(100%,650px);margin:18px 0 0}
 .auth-pitch-wrap:after{position:absolute;right:9%;bottom:-5px;left:9%;height:25px;border-radius:50%;background:#fd5c3630;filter:blur(24px);content:"";pointer-events:none}
 .auth-illustration{position:relative;z-index:1;width:100%;margin:0;overflow:visible;filter:drop-shadow(0 20px 48px #0008)}
@@ -325,7 +327,8 @@ nav button.on{position:relative;overflow:hidden}nav button.on:after{position:abs
   .auth-shell{width:min(650px,100%);min-height:100svh;padding:34px 24px 44px;grid-template-columns:minmax(0,1fr);gap:25px}
   .auth-brand{padding:0}
   .auth-eyebrow{margin-top:32px}
-  .auth-brand h1{max-width:650px;font-size:clamp(45px,8vw,66px)}
+  .auth-brand h1{max-width:650px;font-size:clamp(42px,7vw,58px)}
+  .auth-brand h1 .auth-heading-accent{font-size:clamp(60px,10vw,82px)}
   .auth-brand>p{max-width:540px}
   .auth-pitch-wrap{width:min(100%,620px);margin-top:10px}
   .auth-brand-foot{margin-top:0}
@@ -337,15 +340,17 @@ nav button.on{position:relative;overflow:hidden}nav button.on:after{position:abs
   .auth-brand-mark{width:36px;height:36px}
   .auth-brand-name i{font-size:7px;letter-spacing:1px}
   .auth-eyebrow{margin-top:27px;padding:7px 9px;font-size:8px}
-  .auth-brand h1{margin-top:17px;font-size:clamp(39px,10.2vw,56px);letter-spacing:-.07em}
-  .auth-brand>p{margin-top:13px;font-size:12px;line-height:1.7}
+  .auth-brand h1{margin-top:17px;font-size:clamp(38px,9vw,48px)}
+  .auth-brand h1 .auth-heading-accent{font-size:clamp(56px,13.2vw,70px)}
+  .auth-brand>p{margin-top:13px;font-size:12px;line-height:1.6}
   .auth-pitch-wrap{width:calc(100% + 10px);margin:9px -5px 0}
   .auth-brand-foot{font-size:8px;letter-spacing:1.1px}
   .auth-card.card{padding:25px 21px;border-radius:19px}
 }
 @media(max-width:380px){
   .auth-brand-name i{display:none}
-  .auth-brand h1{font-size:clamp(36px,10vw,43px)}
+  .auth-brand h1{font-size:clamp(36px,9vw,42px)}
+  .auth-brand h1 .auth-heading-accent{font-size:clamp(51px,12.5vw,58px)}
   .auth-card.card{padding:23px 18px}
 }
 @media(prefers-reduced-motion:reduce){
