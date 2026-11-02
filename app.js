@@ -22,7 +22,10 @@ const AUTH = { client: null, session: null, ready: false, busy: false, syncing: 
 const ROOM = { loading: false, loaded: false, busy: false, archiving: false, error: "", archiveError: "", isAdmin: false, debts: [], chronicles: [], hallSeasons: [], dinnerLeaders: [], channel: null, leagueId: null, updatedAt: 0 };
 const CHAT = { loading: false, sending: false, uploadingAvatar: false, error: "", messages: [], avatars: {}, avatarPaths: {}, channel: null, channelLeagueId: null, loadedLeagueId: null, subscribed: false, input: "" };
 const PROFILE = { loading: false, error: "" };
-const LEAGUES = { items: [], loading: false, busy: false, error: "", warning: "" };
+const LEAGUES = {
+  items: [], loading: false, busy: false, error: "", warning: "",
+  createName: "", leagueName: "", joinName: "", inviteCode: ""
+};
 const GAME = { loading: false, busy: false, spinning: false, spinStage: "", wheelRotation: 0, wheelResult: null, data: null, error: "", date: "" };
 const WHEEL_SECTIONS = [
   { type: "boots_gold", title: "Botas de Oro", subtitle: "+5 puntos" },
@@ -1572,14 +1575,14 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
   ${AUTH.mode === "login" || AUTH.mode === "signup" ? `<p class="auth-switch">${AUTH.mode === "signup" ? "¿Ya tienes cuenta?" : "¿Aún no tienes cuenta?"} <button class="auth-link" onclick="setAuthMode('${AUTH.mode === "signup" ? "login" : "signup"}')">${AUTH.mode === "signup" ? "Inicia sesión" : "Regístrate"}</button></p>` : ""}
   <p class="auth-privacy">Tu cuenta mantiene tus ligas y pronósticos sincronizados. Sin cookies publicitarias.</p>
   </section></div>`;
-const leagueGate = () => `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><span class="sp"></span><div class="top-actions">${infoButton()}<button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div></div><main>
-<div class="hero"><h1>Acierta el marcador.<br>Gana a tus amigos.</h1><p>Solo LaLiga EA Sports. Pronostica antes del pitido: cuanto más te acerques, más puntos.</p></div>
-${AUTH.error ? `<div class="card err">${esc(AUTH.error)}</div>` : ""}
+const leagueGate = () => `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><span class="sp"></span><div class="top-actions">${infoButton()}<button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div></div><main class="league-gate">
+<section class="hero" aria-labelledby="league-gate-title"><span class="league-gate-kicker">PLENO <i></i> LA PORRA DE LALIGA</span><h1 id="league-gate-title">Acierta el marcador.<br>Gana a tus amigos.</h1><p>Pronostica antes del pitido y suma puntos con cada partido.</p></section>
+${AUTH.error ? `<div class="card err" role="alert">${esc(AUTH.error)}</div>` : ""}
 ${LEAGUES.warning ? `<div class="card league-setup-warning" role="status">${esc(LEAGUES.warning)}</div>` : ""}
-<h2>Empieza a jugar</h2><div class="gate">
-<form class="card" onsubmit="event.preventDefault();mk()"><b>Crear una liga</b><input class="t" id="gn" placeholder="Tu nombre" maxlength="30" required><input class="t" id="ln" placeholder="Nombre de la liga" maxlength="50" required><button class="btn" type="submit">Crear liga</button></form>
-<form class="card" onsubmit="event.preventDefault();jn()"><b>Unirme con código</b><input class="t" id="gn2" placeholder="Tu nombre" maxlength="30" required><input class="t" id="lc" placeholder="Código de invitación" maxlength="10" required><button class="btn ghost" type="submit">Unirme a la liga</button></form></div>
-<p class="mu">Tus ligas y pronósticos se guardan en tu cuenta y se sincronizan entre dispositivos.</p></main>`;
+<h2 class="league-gate-heading">Elige cómo empezar</h2><div class="gate league-gate-options">
+<form class="card league-choice league-choice-create" onsubmit="event.preventDefault();mk()"><div class="league-choice-heading"><span class="league-choice-number">01</span><div><h3>Crear una liga</h3><p>Invita a tus amigos y montad vuestra porra.</p></div></div><label for="gn">Tu nombre</label><input class="t" id="gn" name="display-name" autocomplete="name" placeholder="¿Cómo te llamamos?" maxlength="30" required value="${esc(LEAGUES.createName)}"><label for="ln">Nombre de la liga</label><input class="t" id="ln" name="league-name" placeholder="p. ej., La porra del sábado" maxlength="50" required value="${esc(LEAGUES.leagueName)}"><button class="btn league-choice-submit" type="submit">Crear mi liga <span aria-hidden="true">→</span></button></form>
+<form class="card league-choice league-choice-join" onsubmit="event.preventDefault();jn()"><div class="league-choice-heading"><span class="league-choice-number">02</span><div><h3>Unirme a una liga</h3><p>¿Te han pasado un código? Entra aquí.</p></div></div><label for="gn2">Tu nombre</label><input class="t" id="gn2" name="display-name" autocomplete="name" placeholder="¿Cómo te llamamos?" maxlength="30" required value="${esc(LEAGUES.joinName)}"><label for="lc">Código de invitación</label><input class="t league-code-input" id="lc" name="invite-code" placeholder="Escribe el código" maxlength="10" autocapitalize="characters" spellcheck="false" required value="${esc(LEAGUES.inviteCode)}"><button class="btn ghost league-choice-submit" type="submit">Unirme a la liga <span aria-hidden="true">→</span></button></form></div>
+<p class="league-gate-footnote"><span aria-hidden="true">✓</span> Tus ligas y pronósticos se guardan en tu cuenta y se sincronizan entre dispositivos.</p></main>`;
 async function activateLeague(id, displayName) {
   if (ROOM.leagueId && ROOM.leagueId !== id) {
     if (ROOM.channel && AUTH.client) AUTH.client.removeChannel(ROOM.channel);
@@ -1610,9 +1613,15 @@ async function mk() {
   try {
     const { data, error } = await AUTH.client.rpc("create_league", { p_name: n, p_display_name: me });
     if (error) throw error;
+    Object.assign(LEAGUES, { createName: "", leagueName: "" });
     await activateLeague(data, me);
     render();
-  } catch (e) { AUTH.error = `No se pudo crear la liga: ${e.message}`; render(); }
+  } catch (e) {
+    LEAGUES.createName = me;
+    LEAGUES.leagueName = n;
+    AUTH.error = `No se pudo crear la liga: ${e.message}`;
+    render();
+  }
 }
 async function jn() {
   const c = $("#lc").value.trim().toUpperCase(), me = $("#gn2").value.trim();
@@ -1620,9 +1629,15 @@ async function jn() {
   try {
     const { data, error } = await AUTH.client.rpc("join_league", { p_invite_code: c, p_display_name: me });
     if (error) throw error;
+    Object.assign(LEAGUES, { joinName: "", inviteCode: "" });
     await activateLeague(data, me);
     render();
-  } catch (e) { AUTH.error = `No se pudo unir a la liga: ${e.message}`; render(); }
+  } catch (e) {
+    LEAGUES.joinName = me;
+    LEAGUES.inviteCode = c;
+    AUTH.error = `No se pudo unir a la liga: ${e.message}`;
+    render();
+  }
 }
 function openLeaguePicker() {
   if (!AUTH.session || V.leaguePickerOpen) return;
