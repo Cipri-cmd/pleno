@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: pleno
+    runtime: node
+    plan: free
+    buildCommand: "echo 'No build step required'"
+    startCommand: "node server.mjs"
+    healthCheckPath: /
+    envVars:
+      - key: FOOTBALL_DATA_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
