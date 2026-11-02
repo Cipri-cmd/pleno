@@ -1578,36 +1578,73 @@ async function deleteLeague(leagueId) {
   }
 }
 const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria-label="PLENO, la porra de LaLiga">
-  <div class="auth-brand-name"><img class="auth-brand-mark" src="icon.svg" alt=""><span>PLENO</span><i>FÚTBOL · AMIGOS · PORRA</i></div>
-  <span class="auth-eyebrow">LA PORRA DE LALIGA</span>
-  <h1>El fútbol se disfruta más <span>cuando juegas.</span></h1>
-  <p>Haz tu porra, sigue los resultados en directo y reta a tus amigos en cualquier pantalla.</p>
-  <svg class="auth-illustration" viewBox="0 0 520 310" role="img" aria-label="Ilustración de un campo de fútbol con un marcador">
-    <defs><linearGradient id="pitch-glow" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#ff3b30"/><stop offset="1" stop-color="#ffb020"/></linearGradient><radialGradient id="ball-glow"><stop stop-color="#fff"/><stop offset="1" stop-color="#cfd2da"/></radialGradient></defs>
-    <rect x="34" y="34" width="452" height="242" rx="26" fill="#14161b" stroke="#34303a" stroke-width="2"/>
-    <path d="M58 58h404v194H58zM260 58v194M260 126a29 29 0 1 0 0 58 29 29 0 0 0 0-58M58 111h52v88H58m404-88h-52v88h52" fill="none" stroke="#42434a" stroke-width="2"/>
-    <path class="auth-goal-home" d="M113 85h36v34h-36z" fill="#ff3b30" opacity=".8"/><path class="auth-goal-away" d="M371 191h36v34h-36z" fill="#ffb020" opacity=".8"/>
-    <circle cx="261" cy="155" r="48" fill="#1c1f26" stroke="url(#pitch-glow)" stroke-width="3"/>
-    <g class="auth-ball"><circle cx="261" cy="155" r="12" fill="url(#ball-glow)" stroke="#fff" stroke-width="1.5"/><path d="m261 149 5 4-2 6h-5l-2-6zm-4 4-5-2m14 2 5-2m-11 8-2 5m6-5 3 5" fill="none" stroke="#34303a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></g>
-    <g class="auth-scoreboard"><rect x="298" y="70" width="149" height="66" rx="15" fill="#202127" stroke="#45414a"/>
-    <text x="317" y="96" fill="#9ba0aa" font-family="system-ui,sans-serif" font-size="11" font-weight="700" letter-spacing="1.5">TU PORRA</text>
-    <text x="317" y="121" fill="#fff" font-family="system-ui,sans-serif" font-size="22" font-weight="900">2 <tspan fill="#ffb020">–</tspan> 1</text>
-    <circle class="auth-score-light" cx="430" cy="105" r="7" fill="url(#pitch-glow)"/></g>
-    <path class="auth-shot-trail" d="m84 231 13-13 12 6 14-20" fill="none" stroke="url(#pitch-glow)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="123" cy="204" r="5" fill="#ffb020"/>
+  <a class="auth-brand-name" href="/" aria-label="PLENO, inicio"><img class="auth-brand-mark" src="icon.svg" alt=""><span>PLENO</span><i>FÚTBOL · AMIGOS · PORRA</i></a>
+  <span class="auth-eyebrow"><span aria-hidden="true">⚡</span> LA PORRA DE LALIGA</span>
+  <h1>EL FÚTBOL SE DISFRUTA MÁS <span>CUANDO JUEGAS.</span></h1>
+  <p>Haz tu porra, sigue los resultados en directo y reta a tus amigos. Cada jornada se vive mejor cuando juegas.</p>
+  <div class="auth-pitch-wrap">
+  <svg class="auth-illustration" viewBox="0 0 640 330" role="img" aria-labelledby="auth-pitch-title auth-pitch-description">
+    <title id="auth-pitch-title">Pizarra táctica PLENO</title>
+    <desc id="auth-pitch-description">Un campo de fútbol digital con jugadores en movimiento y una porra de dos a uno.</desc>
+    <defs>
+      <linearGradient id="auth-pitch-border" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff6a2a" stop-opacity=".55"/><stop offset=".52" stop-color="#ffffff" stop-opacity=".08"/><stop offset="1" stop-color="#f43f5e" stop-opacity=".32"/></linearGradient>
+      <linearGradient id="auth-pitch-line" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff7438"/><stop offset="1" stop-color="#fb365c"/></linearGradient>
+      <linearGradient id="auth-route" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffb454" stop-opacity=".15"/><stop offset=".55" stop-color="#ff7638"/><stop offset="1" stop-color="#ff3559"/></linearGradient>
+      <radialGradient id="auth-pitch-light"><stop stop-color="#ff6638" stop-opacity=".18"/><stop offset="1" stop-color="#ff6638" stop-opacity="0"/></radialGradient>
+      <pattern id="auth-pitch-grid" width="22" height="22" patternUnits="userSpaceOnUse"><path d="M22 0H0V22" fill="none" stroke="#fff" stroke-opacity=".035" stroke-width="1"/></pattern>
+      <filter id="auth-player-glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <rect x="15" y="18" width="610" height="292" rx="24" fill="#101014" stroke="url(#auth-pitch-border)"/>
+    <rect x="16" y="19" width="608" height="290" rx="23" fill="url(#auth-pitch-grid)"/>
+    <ellipse cx="321" cy="164" rx="258" ry="131" fill="url(#auth-pitch-light)"/>
+    <g class="auth-pitch-lines" fill="none" stroke="#d7d2d5" stroke-opacity=".25" stroke-width="1.3">
+      <rect x="43" y="45" width="554" height="238" rx="5"/>
+      <path d="M320 45v238M43 111h67v106H43m554-106h-67v106h67"/>
+      <path d="M43 142h26v44H43m554-44h-26v44h26"/>
+      <circle cx="320" cy="164" r="48"/><circle cx="320" cy="164" r="2.5" fill="#d7d2d5"/>
+      <circle cx="91" cy="164" r="2.5" fill="#d7d2d5"/><circle cx="549" cy="164" r="2.5" fill="#d7d2d5"/>
+    </g>
+    <path class="auth-route auth-route-one" d="M129 210C173 202 174 133 232 145s67 52 102 20 47-68 91-46 33 33 59 20" fill="none" stroke="url(#auth-route)" stroke-width="2.5" stroke-linecap="round"/>
+    <path class="auth-route auth-route-two" d="M193 91c26 31 16 59 47 67s38-22 66-16 29 40 56 52" fill="none" stroke="#ffbd72" stroke-opacity=".75" stroke-width="1.5" stroke-dasharray="3 7" stroke-linecap="round"/>
+    <g transform="translate(129 210)"><g class="auth-player auth-player-a" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
+    <g transform="translate(232 145)"><g class="auth-player auth-player-b" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
+    <g transform="translate(334 165)"><g class="auth-player auth-player-c" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
+    <g transform="translate(425 119)"><g class="auth-player auth-player-d" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
+    <g transform="translate(484 139)"><g class="auth-player auth-player-e" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
+    <g transform="translate(184 108)"><g class="auth-player auth-player-f" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
+    <g transform="translate(276 167)"><g class="auth-player auth-player-g" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
+    <g transform="translate(362 214)"><g class="auth-player auth-player-h" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
+    <g transform="translate(511 189)"><g class="auth-player auth-player-i" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
+    <g class="auth-ball" transform="translate(355 164)"><circle r="7" fill="#fff8ef"/><path d="m-2.5-2 3-.8 2 2-1 3h-3l-1.4-2.5z" fill="#262229"/></g>
+    <g class="auth-scoreboard" transform="rotate(-4 487 89)">
+      <rect x="408" y="53" width="158" height="73" rx="14" fill="#17161a" fill-opacity=".9" stroke="#ffffff" stroke-opacity=".18"/>
+      <path d="M408 67h158" stroke="#ffffff" stroke-opacity=".08"/>
+      <circle class="auth-score-light" cx="426" cy="60" r="2" fill="#ffb454"/><circle class="auth-score-light auth-score-light-two" cx="548" cy="114" r="1.7" fill="#ff6648"/>
+      <text x="426" y="83" fill="#a5a1a5" font-family="Inter, sans-serif" font-size="9" font-weight="700" letter-spacing="1.8">TU PORRA</text>
+      <text x="426" y="111" fill="#fff" font-family="Space Grotesk, sans-serif" font-size="25" font-weight="700">2 <tspan fill="#ff7443">—</tspan> 1</text>
+      <rect x="518" y="94" width="29" height="14" rx="7" fill="#ff7546" fill-opacity=".13"/><text x="523" y="104" fill="#ff9a67" font-family="Inter, sans-serif" font-size="7" font-weight="700" letter-spacing=".8">LIVE</text>
+    </g>
+    <circle class="auth-pitch-particle auth-pitch-particle-a" cx="370" cy="73" r="1.5" fill="#ffb454"/><circle class="auth-pitch-particle auth-pitch-particle-b" cx="251" cy="250" r="1.5" fill="#ff6848"/><circle class="auth-pitch-particle auth-pitch-particle-c" cx="576" cy="176" r="1.2" fill="#ffb454"/>
+    <text x="43" y="299" fill="#8c858b" font-family="Inter, sans-serif" font-size="8" font-weight="700" letter-spacing="1.4">LECTURA DE JUEGO · JORNADA 01</text>
+    <text x="574" y="299" fill="#ff8b57" font-family="Inter, sans-serif" font-size="8" font-weight="700" letter-spacing="1.1" text-anchor="end">01:24</text>
   </svg>
-  <div class="auth-brand-foot"><span class="auth-live-dot"></span> Tus resultados, siempre contigo</div>
-  </section><section class="card auth-card">
-  <h2>${AUTH.mode === "signup" ? "Crear cuenta" : AUTH.mode === "update" ? "Nueva contraseña" : "Iniciar sesión"}</h2>
+  </div>
+  <div class="auth-brand-foot"><span class="auth-live-dot"></span> TU EQUIPO. TU JORNADA. TU PORRA.</div>
+  </section><section class="card auth-card" aria-labelledby="auth-title">
+  <div class="auth-card-top"><span class="auth-card-kicker"><span></span> ACCESO DE JUGADOR</span><span class="auth-card-index">PL<span>·</span>01</span></div>
+  <h2 id="auth-title">${AUTH.mode === "signup" ? "CREAR CUENTA" : AUTH.mode === "update" ? "NUEVA CONTRASEÑA" : "INICIAR SESIÓN"}</h2>
+  <p class="auth-card-intro">${AUTH.mode === "signup" ? "Empieza a jugar con los tuyos." : AUTH.mode === "update" ? "Elige una contraseña segura para tu cuenta." : "Vuelve a la jornada. Tus amigos ya están jugando."}</p>
   ${AUTH.error ? `<p class="auth-message" role="status">${esc(AUTH.error)}</p>` : ""}
-  <form onsubmit="event.preventDefault();${AUTH.mode === "update" ? "updatePassword()" : "submitAuth()"}">
-    ${AUTH.mode === "update" ? "" : `<label for="auth-email">Correo electrónico</label><input class="t" id="auth-email" type="email" autocomplete="email" required value="${esc(AUTH.email)}" placeholder="tu@correo.com">`}
-    <label for="auth-password">${AUTH.mode === "update" ? "Nueva contraseña" : "Contraseña"}</label><div class="auth-password-field"><input class="t" id="auth-password" type="password" autocomplete="${AUTH.mode === "signup" || AUTH.mode === "update" ? "new-password" : "current-password"}" minlength="6" required value="${esc(AUTH.password)}" placeholder="Al menos 6 caracteres"><button class="password-visibility" type="button" onclick="togglePasswordVisibility(this)" aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/><path class="password-eye-slash" d="m4 4 16 16"/></svg></button></div>
-    <button class="btn auth-submit" type="submit" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}>${AUTH.busy ? '<svg class="auth-spinner" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity=".28" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>Entrando…' : AUTH.mode === "signup" ? "Crear cuenta" : AUTH.mode === "update" ? "Guardar contraseña" : "Entrar"}</button>
+  <form class="auth-form" onsubmit="event.preventDefault();${AUTH.mode === "update" ? "updatePassword()" : "submitAuth()"}">
+    ${AUTH.mode === "update" ? "" : `<label for="auth-email">CORREO ELECTRÓNICO</label><div class="auth-input-wrap"><svg class="auth-input-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></svg><input class="t" id="auth-email" type="email" autocomplete="email" required value="${esc(AUTH.email)}" placeholder="tu@correo.com"></div>`}
+    <label for="auth-password">${AUTH.mode === "update" ? "NUEVA CONTRASEÑA" : "CONTRASEÑA"}</label>
+    <div class="auth-input-wrap auth-password-field"><svg class="auth-input-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input class="t" id="auth-password" type="password" autocomplete="${AUTH.mode === "signup" || AUTH.mode === "update" ? "new-password" : "current-password"}" minlength="6" required value="${esc(AUTH.password)}" placeholder="Al menos 6 caracteres"><button class="password-visibility" type="button" onclick="togglePasswordVisibility(this)" aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/><path class="password-eye-slash" d="m4 4 16 16"/></svg></button></div>
+    ${AUTH.mode === "login" ? `<div class="auth-forgot-row"><button class="auth-link" type="button" onclick="resetPassword()">¿Olvidaste la contraseña?</button></div>` : ""}
+    <button class="btn auth-submit" type="submit" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}>${AUTH.busy ? '<svg class="auth-spinner" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity=".28" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>Entrando…' : AUTH.mode === "signup" ? "Crear cuenta" : AUTH.mode === "update" ? "Guardar contraseña" : 'Entrar <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>'}</button>
   </form>
-  ${AUTH.mode === "login" ? `<button class="auth-link" onclick="resetPassword()">¿Olvidaste la contraseña?</button><div class="auth-divider"><span>o continúa con</span></div><button class="btn ghost auth-submit google-submit" onclick="signInGoogle()" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}><svg class="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#34A853" d="M6.3 14.7l6.6 4.8C14.5 15.1 18.9 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#FBBC05" d="M24 44c5.2 0 9.9-1.7 13.2-4.6l-6.1-5.2c-1.7 1.2-4.2 2-7.1 2-5.3 0-9.7-3.3-11.3-7.9l-6.6 5.1C9.4 39.6 16.1 44 24 44z"/><path fill="#EA4335" d="M6.3 14.7C4.8 17.4 4 20.6 4 24s.8 6.6 2.3 9.3l6.6-5.1c-.6-1.3-.9-2.7-.9-4.2s.3-2.9.9-4.2z"/></svg>${AUTH.googleBusy ? "Abriendo Google…" : "Continuar con Google"}</button>` : ""}
+  ${AUTH.mode === "login" ? `<div class="auth-divider"><span>O CONTINÚA CON</span></div><button class="btn ghost auth-submit google-submit" onclick="signInGoogle()" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}><svg class="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#34A853" d="M6.3 14.7l6.6 4.8C14.5 15.1 18.9 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#FBBC05" d="M24 44c5.2 0 9.9-1.7 13.2-4.6l-6.1-5.2c-1.7 1.2-4.2 2-7.1 2-5.3 0-9.7-3.3-11.3-7.9l-6.6 5.1C9.4 39.6 16.1 44 24 44z"/><path fill="#EA4335" d="M6.3 14.7C4.8 17.4 4 20.6 4 24s.8 6.6 2.3 9.3l6.6-5.1c-.6-1.3-.9-2.7-.9-4.2s.3-2.9.9-4.2z"/></svg>${AUTH.googleBusy ? "Abriendo Google…" : "Continuar con Google"}</button>` : ""}
   ${AUTH.mode === "login" || AUTH.mode === "signup" ? `<p class="auth-switch">${AUTH.mode === "signup" ? "¿Ya tienes cuenta?" : "¿Aún no tienes cuenta?"} <button class="auth-link" onclick="setAuthMode('${AUTH.mode === "signup" ? "login" : "signup"}')">${AUTH.mode === "signup" ? "Inicia sesión" : "Regístrate"}</button></p>` : ""}
-  <p class="auth-privacy">Tu cuenta mantiene tus ligas y pronósticos sincronizados. Sin cookies publicitarias.</p>
+  <p class="auth-privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.7 2.9 8.1 7 10 4.1-1.9 7-5.3 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>Tu cuenta mantiene tus ligas y pronósticos sincronizados.</p>
   </section></div>`;
 const leagueGate = () => `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><span class="sp"></span><div class="top-actions">${infoButton()}<button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div></div><main class="league-gate">
 <section class="hero" aria-labelledby="league-gate-title"><span class="league-gate-kicker">PLENO <i></i> LA PORRA DE LALIGA</span><h1 id="league-gate-title">Acierta el marcador.<br>Gana a tus amigos.</h1><p>Pronostica antes del pitido y suma puntos con cada partido.</p></section>
