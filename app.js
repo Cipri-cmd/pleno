@@ -1917,5 +1917,5 @@ if (typeof document !== "undefined" && document.documentElement) {
   render(); loadMain(); initializeAuth(); setInterval(poll, 30000); setInterval(refreshCloudPredictions, 15000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") poll(); });
   window.addEventListener("online", () => poll());
-  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("/sw.js").catch((error) => console.error("No se pudo registrar el service worker de PLENO:", error));
 }

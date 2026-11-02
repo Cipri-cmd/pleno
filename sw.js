@@ -1,11 +1,18 @@
-// Service worker mínimo: permite instalar la app y abrir la última versión sin conexión.
-const C = "pleno-v30", SHELL = ["/", "/index.html", "/styles.css", "/lib.js", "/app.js", "/icon.svg"];
+// Sirve la app desde caché al instante y actualiza los recursos en segundo plano.
+const C = "pleno-v31", SHELL = ["/", "/index.html", "/manifest.webmanifest", "/styles.css", "/lib.js", "/app.js", "/icon.svg", "/icon-192.svg", "/icon-512.svg"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(C).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("pleno-") && key !== C).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", (e) => {
   const u = new URL(e.request.url);
   if (e.request.method !== "GET" || u.origin !== location.origin || u.pathname.startsWith("/api/")) return;
-  e.respondWith(fetch(e.request).then((r) => { const k = r.clone(); caches.open(C).then((c) => c.put(e.request, k)); return r; }).catch(() => caches.match(e.request)));
+  const refresh = fetch(e.request).then((response) => {
+    if (response.status === 200 && response.type === "basic") {
+      return caches.open(C).then((cache) => cache.put(e.request, response.clone())).then(() => response);
+    }
+    return response;
+  });
+  e.waitUntil(refresh.catch((error) => console.warn("No se pudo actualizar la caché de PLENO:", error)));
+  e.respondWith(caches.match(e.request).then((cached) => cached || refresh));
 });
 self.addEventListener("push", (event) => {
   let payload = {};
