@@ -1267,11 +1267,16 @@ async function spinDailyVar() {
     render();
     await animateTo(data.section_index, 7);
     if (data.outcome === "double_or_nothing") {
+      GAME.spinStage = "first-result";
+      render();
+      await new Promise((resolve) => setTimeout(resolve, 900));
       GAME.spinStage = "second";
       navigator.vibrate?.([24, 55, 24, 55, 35]);
       render();
       await animateTo(data.resolved_section_index, 13);
     }
+    GAME.spinStage = "result";
+    render();
     navigator.vibrate?.(data.final_reward === "var_annulled" ? [80, 50, 80] : [50, 40, 90]);
     await refreshScoutState(false);
   } catch (error) {
@@ -1395,9 +1400,18 @@ function tJuego() {
   const spin = data?.spin || GAME.wheelResult;
   const spinSection = spin ? WHEEL_SECTIONS[Number(spin.section_index) - 1] : null;
   const finalReward = spin?.final_reward ? WHEEL_SECTIONS.find((section) => section.type === spin.final_reward) : null;
+  const centerReward = spin && (!GAME.spinning || GAME.spinStage === "result") ? finalReward : GAME.spinStage === "first-result" ? spinSection : null;
+  const centerLines = centerReward ? ({
+    boots_gold: ["BOTAS", "DE ORO"],
+    joker_x2: ["EL", "MALETÍN"],
+    red_card: ["TARJETA", "ROJA"],
+    double_or_nothing: ["DOBLE", "O NADA"],
+    var_annulled: ["GOL", "ANULADO"],
+    second_chance: ["SEGUNDA", "OPORTUNIDAD"]
+  }[centerReward.type] || ["PREMIO", ""]) : GAME.spinStage === "second" ? ["RE", "GIRO"] : ["PLENO", ""];
   const wheelResult = spin && !GAME.spinning ? `<div class="scout-wheel-result ${spin.final_reward === "var_annulled" ? "is-zero" : ""}"><b>${spin.outcome === "double_or_nothing" ? "DOBLE O NADA · RE-GIRO" : esc(spinSection?.title || "RESULTADO")}</b><strong>${spin.final_reward === "var_annulled" ? "GOL ANULADO" : `${esc(finalReward?.title || "")}${spin.quantity > 1 ? ` ×${spin.quantity}` : ""}`}</strong><small>${spin.final_reward === "var_annulled" ? "La recompensa de esta ruleta se ha perdido." : esc(finalReward?.subtitle || "")}</small></div>` : "";
   const canSpin = Boolean(solved && !data.spin && !GAME.busy && !GAME.spinning);
-  const wheelSection = `<section class="scout-panel scout-wheel-panel"><div class="scout-panel-head"><div><span class="scout-kicker">PREMIO DE HOY</span><h2>La Ruleta del VAR</h2></div><span class="scout-wheel-odds">6 sectores · 1/6 cada uno</span></div><div class="scout-wheel-layout"><div class="scout-wheel-frame"><i class="scout-wheel-pointer"></i><svg class="scout-wheel-disc ${GAME.spinning ? "is-spinning" : ""}" viewBox="0 0 240 240" style="--wheel-rotation:${GAME.wheelRotation}deg" role="img" aria-label="Ruleta con seis recompensas">${wheel}<circle cx="120" cy="120" r="23" fill="#0c1112" stroke="#90a6a0" stroke-width="2"/><text x="120" y="123" text-anchor="middle" fill="#fff" font-size="8" font-weight="900">PLENO</text></svg></div><div class="scout-wheel-copy"><p>${solved ? "Premio aleatorio, resuelto en Supabase. Doble o Nada re-gira por una recompensa doble; Gol Anulado puede dejarte sin ella." : "Resuelve El Fichaje Clandestino para desbloquear un giro diario."}</p><button class="btn scout-spin ${canSpin ? "is-available" : ""}" onclick="spinDailyVar()" ${!canSpin ? "disabled" : ""}>${GAME.spinning ? (GAME.spinStage === "second" ? "Doble o Nada: segundo giro…" : "El VAR está revisando…") : data?.spin ? "Giro ya utilizado" : solved ? "Girar ruleta" : "Desbloqueada al acertar"}</button></div></div>${wheelResult}</section>`;
+  const wheelSection = `<section class="scout-panel scout-wheel-panel"><div class="scout-panel-head"><div><span class="scout-kicker">PREMIO DE HOY</span><h2>La Ruleta del VAR</h2></div><span class="scout-wheel-odds">6 sectores · 1/6 cada uno</span></div><div class="scout-wheel-layout"><div class="scout-wheel-frame ${GAME.spinning ? "is-spinning" : ""}"><i class="scout-wheel-pointer"></i><svg class="scout-wheel-disc ${GAME.spinning ? "is-spinning" : ""}" viewBox="0 0 240 240" style="--wheel-rotation:${GAME.wheelRotation}deg" role="img" aria-label="Ruleta con seis recompensas">${wheel}<circle cx="120" cy="120" r="23" fill="#0c1112" stroke="#90a6a0" stroke-width="2"/><text class="scout-wheel-center-label" text-anchor="middle" fill="#fff" font-size="5.5" font-weight="900"><tspan x="120" y="118">${esc(centerLines[0])}</tspan><tspan x="120" y="125">${esc(centerLines[1])}</tspan></text></svg></div><div class="scout-wheel-copy"><p>${solved ? "Premio aleatorio, resuelto en Supabase. Doble o Nada re-gira por una recompensa doble; Gol Anulado puede dejarte sin ella." : "Resuelve El Fichaje Clandestino para desbloquear un giro diario."}</p><button class="btn scout-spin ${canSpin ? "is-available" : ""}" onclick="spinDailyVar()" ${!canSpin ? "disabled" : ""}>${GAME.spinning ? (GAME.spinStage === "second" ? "Doble o Nada: segundo giro…" : "El VAR está revisando…") : data?.spin ? "Giro ya utilizado" : solved ? "Girar ruleta" : "Desbloqueada al acertar"}</button></div></div>${wheelResult}</section>`;
 
   const match = featuredMatch();
   const nextMatch = D.matches
@@ -1511,7 +1525,7 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
   ${AUTH.mode === "login" || AUTH.mode === "signup" ? `<p class="auth-switch">${AUTH.mode === "signup" ? "¿Ya tienes cuenta?" : "¿Aún no tienes cuenta?"} <button class="auth-link" onclick="setAuthMode('${AUTH.mode === "signup" ? "login" : "signup"}')">${AUTH.mode === "signup" ? "Inicia sesión" : "Regístrate"}</button></p>` : ""}
   <p class="auth-privacy">Tu cuenta mantiene tus ligas y pronósticos sincronizados. Sin cookies publicitarias.</p>
   </section></div>`;
-const leagueGate = () => `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><span class="sp"></span><div class="top-actions">${infoButton()}<button class="btn ghost auth-logout" onclick="signOut()">Cerrar sesión</button></div></div></div><main>
+const leagueGate = () => `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><span class="sp"></span><div class="top-actions">${infoButton()}<button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div></div><main>
 <div class="hero"><h1>Acierta el marcador.<br>Gana a tus amigos.</h1><p>Solo LaLiga EA Sports. Pronostica antes del pitido: cuanto más te acerques, más puntos.</p></div>
 ${AUTH.error ? `<div class="card err">${esc(AUTH.error)}</div>` : ""}
 <h2>Empieza a jugar</h2><div class="gate">

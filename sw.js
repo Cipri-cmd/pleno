@@ -1,5 +1,5 @@
 // Service worker mínimo: permite instalar la app y abrir la última versión sin conexión.
-const C = "pleno-v26", SHELL = ["/", "/index.html", "/styles.css", "/lib.js", "/app.js", "/icon.svg"];
+const C = "pleno-v28", SHELL = ["/", "/index.html", "/styles.css", "/lib.js", "/app.js", "/icon.svg"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(C).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("pleno-") && key !== C).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", (e) => {
