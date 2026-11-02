@@ -1,3 +1,5 @@
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@200,300,400,500,600,700&display=swap');
+
 :root{--bg:#0C0D10;--s1:#14161B;--s2:#1C1F26;--ln:#272B34;--tx:#F3F4F6;--mu:#8B93A1;--ac:#FF3B30;--ac2:#FFB020;--bt:#fff;--ok:#34D399;--bad:#F87171;--r:16px;
   --g:linear-gradient(135deg,var(--ac),var(--ac2))}
 html[data-th=blanco]{--bg:#F2F4F7;--s1:#fff;--s2:#EDF0F4;--ln:#E1E5EB;--tx:#0E1116;--mu:#5F6877;--ac:#D8002D;--ac2:#FF7A00;color-scheme:light}
@@ -245,7 +247,7 @@ nav button.on{position:relative;overflow:hidden}nav button.on:after{position:abs
 .auth-shell{position:relative;isolation:isolate;width:min(1280px,100%);min-height:100svh;margin:0 auto;padding:clamp(28px,6vh,72px) clamp(22px,5vw,68px);grid-template-columns:minmax(0,1.22fr) minmax(360px,.78fr);gap:clamp(34px,6vw,92px);color:#f6f5f4}
 .auth-shell:before{position:fixed;inset:0;z-index:-1;background:radial-gradient(ellipse at 15% 50%,#ff55200f,transparent 42%),radial-gradient(ellipse at 92% 18%,#f43f5e0c,transparent 35%),#0a0a0c;content:"";pointer-events:none}
 .auth-brand{padding:0}
-.auth-brand-name{width:fit-content;gap:12px;color:#f7f5f3;text-decoration:none;font:700 22px/1 "Space Grotesk",sans-serif;letter-spacing:5px}
+.auth-brand-name{width:fit-content;gap:12px;color:#f7f5f3;text-decoration:none;font:800 22px/1 Inter,sans-serif;letter-spacing:5px}
 .auth-brand-name:hover{color:#fff}
 .auth-brand-mark{width:42px;height:42px;animation:none;filter:drop-shadow(0 0 16px #ff5b3538)}
 .auth-brand-name i{align-self:center;margin:3px 0 0 1px;color:#77747a;font:700 8px/1.2 Inter,sans-serif;letter-spacing:1.55px}
@@ -279,9 +281,9 @@ nav button.on{position:relative;overflow:hidden}nav button.on:after{position:abs
 .auth-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px}
 .auth-card-kicker{display:flex;align-items:center;gap:8px;color:#aaa5ab;font:800 9px/1 Inter,sans-serif;letter-spacing:1.45px}
 .auth-card-kicker>span{width:7px;height:7px;border-radius:50%;background:#ff7144;box-shadow:0 0 11px #ff7144a6}
-.auth-card-index{color:#67636a;font:700 10px/1 "Space Grotesk",sans-serif;letter-spacing:1px}
+.auth-card-index{color:#67636a;font:700 10px/1 Inter,sans-serif;letter-spacing:1px}
 .auth-card-index span{padding:0 3px;color:#ff7849}
-.auth-card h2{margin:0;color:#f7f5f4;font:700 25px/1.12 "Space Grotesk",sans-serif;letter-spacing:-.9px;text-transform:uppercase}
+.auth-card h2{margin:0;color:#f7f5f4;font:700 25px/1.12 Inter,sans-serif;letter-spacing:-.9px;text-transform:uppercase}
 .auth-card-intro{margin:9px 0 24px;color:#88848b;font:400 12px/1.6 Inter,sans-serif}
 .auth-card .auth-message{margin:0 0 17px;border-color:#ff735045;background:#ff59300c;color:#ffb19a;font-size:12px;line-height:1.55}
 .auth-form{display:grid;gap:0}
@@ -357,4 +359,3 @@ nav button.on{position:relative;overflow:hidden}nav button.on:after{position:abs
   .auth-route,.auth-player,.auth-ball,.auth-scoreboard,.auth-score-light,.auth-pitch-particle,.auth-card.card:before{animation:none}
   .auth-card .auth-submit,.auth-card .auth-link:after{transition:none}
 }
-#app .auth-shell,#app .auth-shell *{font-family:"Clash Display",sans-serif!important}
