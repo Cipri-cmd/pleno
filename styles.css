@@ -271,7 +271,8 @@ nav button.on{position:relative;overflow:hidden}nav button.on:after{position:abs
 .auth-brand-foot{gap:9px;margin:5px 0 0;color:#79767c;font:700 9px/1.4 Inter,sans-serif;letter-spacing:1.45px}
 .auth-live-dot{width:7px;height:7px;background:#ff7950;box-shadow:0 0 12px #ff673a9c}
 .auth-card.card{position:relative;isolation:isolate;width:100%;padding:clamp(27px,3vw,39px);overflow:hidden;border:1px solid #ffffff0c;border-radius:23px;background:linear-gradient(145deg,#19191de8,#111114f2);backdrop-filter:blur(18px);box-shadow:0 28px 90px #0008,0 1px 0 #ffffff0b inset}
-.auth-card.card:before{position:absolute;inset:-1px;z-index:-1;border-radius:inherit;padding:1px;background:conic-gradient(from 25deg,#ffffff12,#ff713b70,#ffffff0c,#f0445c55,#ffffff12);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;content:"";animation:auth-edge-glint 6s ease-in-out infinite}
+.auth-card.card:before{position:absolute;inset:-1px;z-index:0;border-radius:inherit;padding:1px;background:conic-gradient(from 25deg,#ffffff12,#ff713b70,#ffffff0c,#f0445c55,#ffffff12);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;content:"";animation:auth-edge-glint 6s ease-in-out infinite}
+.auth-card.card>*{position:relative;z-index:1}
 .auth-card.card:after{position:absolute;top:0;right:12%;left:12%;height:1px;background:linear-gradient(90deg,transparent,#ff835866,transparent);content:""}
 .auth-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px}
 .auth-card-kicker{display:flex;align-items:center;gap:8px;color:#aaa5ab;font:800 9px/1 Inter,sans-serif;letter-spacing:1.45px}
