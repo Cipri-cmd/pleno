@@ -586,6 +586,16 @@ function setAuthMode(mode) {
   AUTH.error = "";
   render();
 }
+function togglePasswordVisibility(button) {
+  const password = $("#auth-password");
+  if (!password) return;
+  const isVisible = password.type === "password";
+  password.type = isVisible ? "text" : "password";
+  button.classList.toggle("is-visible", isVisible);
+  button.setAttribute("aria-pressed", String(isVisible));
+  button.setAttribute("aria-label", isVisible ? "Ocultar contraseña" : "Mostrar contraseña");
+  button.title = isVisible ? "Ocultar contraseña" : "Mostrar contraseña";
+}
 async function submitAuth() {
   const email = $("#auth-email")?.value.trim() || "";
   const password = $("#auth-password")?.value || "";
@@ -1552,14 +1562,14 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
     <defs><linearGradient id="pitch-glow" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#ff3b30"/><stop offset="1" stop-color="#ffb020"/></linearGradient><radialGradient id="ball-glow"><stop stop-color="#fff"/><stop offset="1" stop-color="#cfd2da"/></radialGradient></defs>
     <rect x="34" y="34" width="452" height="242" rx="26" fill="#14161b" stroke="#34303a" stroke-width="2"/>
     <path d="M58 58h404v194H58zM260 58v194M260 126a29 29 0 1 0 0 58 29 29 0 0 0 0-58M58 111h52v88H58m404-88h-52v88h52" fill="none" stroke="#42434a" stroke-width="2"/>
-    <path d="M113 85h36v34h-36z" fill="#ff3b30" opacity=".8"/><path d="M371 191h36v34h-36z" fill="#ffb020" opacity=".8"/>
+    <path class="auth-goal-home" d="M113 85h36v34h-36z" fill="#ff3b30" opacity=".8"/><path class="auth-goal-away" d="M371 191h36v34h-36z" fill="#ffb020" opacity=".8"/>
     <circle cx="261" cy="155" r="48" fill="#1c1f26" stroke="url(#pitch-glow)" stroke-width="3"/>
-    <path d="m261 139 13 9-5 15h-16l-5-15zm-13 9-13-4m34 4 14-4m-30 15-6 14m16-14 8 14m-30-29-8-12m43 12 8-12" fill="none" stroke="#f3f4f6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <rect x="298" y="70" width="149" height="66" rx="15" fill="#202127" stroke="#45414a"/>
+    <g class="auth-ball"><circle cx="261" cy="155" r="12" fill="url(#ball-glow)" stroke="#fff" stroke-width="1.5"/><path d="m261 149 5 4-2 6h-5l-2-6zm-4 4-5-2m14 2 5-2m-11 8-2 5m6-5 3 5" fill="none" stroke="#34303a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g class="auth-scoreboard"><rect x="298" y="70" width="149" height="66" rx="15" fill="#202127" stroke="#45414a"/>
     <text x="317" y="96" fill="#9ba0aa" font-family="system-ui,sans-serif" font-size="11" font-weight="700" letter-spacing="1.5">TU PORRA</text>
     <text x="317" y="121" fill="#fff" font-family="system-ui,sans-serif" font-size="22" font-weight="900">2 <tspan fill="#ffb020">–</tspan> 1</text>
-    <circle cx="430" cy="105" r="7" fill="url(#pitch-glow)"/>
-    <path d="m84 231 13-13 12 6 14-20" fill="none" stroke="url(#pitch-glow)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle class="auth-score-light" cx="430" cy="105" r="7" fill="url(#pitch-glow)"/></g>
+    <path class="auth-shot-trail" d="m84 231 13-13 12 6 14-20" fill="none" stroke="url(#pitch-glow)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
     <circle cx="123" cy="204" r="5" fill="#ffb020"/>
   </svg>
   <div class="auth-brand-foot"><span class="auth-live-dot"></span> Tus resultados, siempre contigo</div>
@@ -1568,7 +1578,7 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
   ${AUTH.error ? `<p class="auth-message" role="status">${esc(AUTH.error)}</p>` : ""}
   <form onsubmit="event.preventDefault();${AUTH.mode === "update" ? "updatePassword()" : "submitAuth()"}">
     ${AUTH.mode === "update" ? "" : `<label for="auth-email">Correo electrónico</label><input class="t" id="auth-email" type="email" autocomplete="email" required value="${esc(AUTH.email)}" placeholder="tu@correo.com">`}
-    <label for="auth-password">${AUTH.mode === "update" ? "Nueva contraseña" : "Contraseña"}</label><input class="t" id="auth-password" type="password" autocomplete="${AUTH.mode === "signup" || AUTH.mode === "update" ? "new-password" : "current-password"}" minlength="6" required placeholder="Al menos 6 caracteres">
+    <label for="auth-password">${AUTH.mode === "update" ? "Nueva contraseña" : "Contraseña"}</label><div class="auth-password-field"><input class="t" id="auth-password" type="password" autocomplete="${AUTH.mode === "signup" || AUTH.mode === "update" ? "new-password" : "current-password"}" minlength="6" required placeholder="Al menos 6 caracteres"><button class="password-visibility" type="button" onclick="togglePasswordVisibility(this)" aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/><path class="password-eye-slash" d="m4 4 16 16"/></svg></button></div>
     <button class="btn auth-submit" type="submit" ${AUTH.busy || !AUTH.client ? "disabled" : ""}>${AUTH.busy ? "Un momento…" : AUTH.mode === "signup" ? "Crear cuenta" : AUTH.mode === "update" ? "Guardar contraseña" : "Entrar"}</button>
   </form>
   ${AUTH.mode === "login" ? `<button class="auth-link" onclick="resetPassword()">¿Olvidaste la contraseña?</button><div class="auth-divider"><span>o continúa con</span></div><button class="btn ghost auth-submit" onclick="signInGoogle()" ${AUTH.busy || !AUTH.client ? "disabled" : ""}>Continuar con Google</button>` : ""}
