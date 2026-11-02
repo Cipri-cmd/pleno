@@ -4,9 +4,9 @@ html[data-th=blanco]{--bg:#F2F4F7;--s1:#fff;--s2:#EDF0F4;--ln:#E1E5EB;--tx:#0E11
 html[data-th=medianoche]{--bg:#050B1A;--s1:#0B1530;--s2:#12204A;--ln:#1E2F63;--tx:#EAF1FF;--mu:#8CA0CC;--ac:#22D3EE;--ac2:#A78BFA;--bt:#00131A}
 *{box-sizing:border-box}
 .auth-password-field{position:relative}
-.auth-password-field input.t{padding-right:48px}
-.password-visibility{position:absolute;top:50%;right:7px;display:grid;width:36px;height:36px;place-items:center;transform:translateY(-50%);border:0;border-radius:9px;background:transparent;color:var(--mu);transition:background .16s,color .16s}
-.password-visibility:hover{background:var(--s1);color:var(--tx)}
+.auth-password-field input.t{padding-right:56px}
+.password-visibility{position:absolute;top:50%;right:6px;display:grid;width:40px;height:40px;place-items:center;transform:translateY(-50%);border:1px solid var(--ln);border-radius:10px;background:var(--s1);color:var(--mu);transition:background .16s,border-color .16s,color .16s}
+.password-visibility:hover{border-color:var(--ac);background:var(--s2);color:var(--tx)}
 .password-visibility:focus-visible{outline:2px solid var(--ac2);outline-offset:1px}
 .password-visibility svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .password-eye-slash{opacity:1;transition:opacity .15s}
