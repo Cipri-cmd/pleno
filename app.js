@@ -18,7 +18,7 @@ try { Object.assign(S, JSON.parse(localStorage.getItem("pleno"))); } catch {}
 const save = () => { try { localStorage.setItem("pleno", JSON.stringify(S)); } catch {} };
 const V = { tab: "i", team: null, sub: "res", md: null, challengeMd: null, leagueSection: "ranking", instructionsOpen: false, instructionsNeedsFocus: false, profileOpen: false, profileNeedsFocus: false, leaguePickerOpen: false, leaguePickerNeedsFocus: false, tbl: "all", q: "", tabDirection: 1 };
 const D = { ready: false, err: null, matches: [], table: [], tH: [], tA: [], teams: [], by: {}, scorers: [], cur: 1, seasonStartYear: 0, tc: {}, polling: false, lastMatchesUpdate: 0, lastStandingsUpdate: 0, lastTeamsUpdate: 0, lastScorersUpdate: 0, lastStandingsPoll: 0, lastTeamsPoll: 0, lastScorersPoll: 0, matchesTimestampEstimated: false, standingsTimestampEstimated: false, teamsTimestampEstimated: false, scorersTimestampEstimated: false, matchesStale: false, standingsStale: false, teamsStale: false, scorersStale: false, matchesError: "", standingsError: "", teamsError: "", scorersError: "", minigames: { round_bonuses: [], minute_bonuses: [], red_cards: [] } };
-const AUTH = { client: null, session: null, ready: false, busy: false, syncing: false, minigameSyncing: false, mode: "login", email: "", error: "" };
+const AUTH = { client: null, session: null, ready: false, busy: false, googleBusy: false, syncing: false, minigameSyncing: false, mode: "login", email: "", password: "", error: "" };
 const ROOM = { loading: false, loaded: false, busy: false, archiving: false, error: "", archiveError: "", isAdmin: false, debts: [], chronicles: [], hallSeasons: [], dinnerLeaders: [], channel: null, leagueId: null, updatedAt: 0 };
 const CHAT = { loading: false, sending: false, uploadingAvatar: false, error: "", messages: [], avatars: {}, avatarPaths: {}, channel: null, channelLeagueId: null, loadedLeagueId: null, subscribed: false, input: "" };
 const PROFILE = { loading: false, error: "" };
@@ -168,7 +168,16 @@ async function api(p, q = {}) {
   }
   return j;
 }
-const toast = (m) => { const t = $("#toast"); t.textContent = m; t.classList.add("v"); setTimeout(() => t.classList.remove("v"), 2600); };
+let toastTimeout;
+const toast = (m, type = "") => {
+  const t = $("#toast");
+  if (!t) return;
+  t.textContent = m;
+  t.classList.toggle("toast-error", type === "error");
+  t.classList.add("v");
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => t.classList.remove("v"), 3200);
+};
 const fb = (i) => { i.outerHTML = `<span class="crest-fallback ${i.classList.contains("l") ? "l" : ""}">${esc(i.dataset.t)}</span>`; };
 const crest = (t, c = "") => `<img class="cr ${c}" src="${esc(t.crest)}" alt="" loading="lazy" data-t="${esc(t.tla || (t.name || "").slice(0, 3).toUpperCase())}" onerror="fb(this)">`;
 const clubName = (t) => t.name || t.shortName || "Club";
@@ -583,6 +592,7 @@ async function initializeAuth() {
 }
 function setAuthMode(mode) {
   AUTH.mode = mode;
+  AUTH.password = "";
   AUTH.error = "";
   render();
 }
@@ -602,6 +612,7 @@ async function submitAuth() {
   if (!email || !password) return toast("Escribe tu correo y contraseña");
   if (password.length < 6) return toast("La contraseña debe tener al menos 6 caracteres");
   AUTH.email = email;
+  AUTH.password = password;
   AUTH.busy = true;
   AUTH.error = "";
   render();
@@ -619,21 +630,34 @@ async function submitAuth() {
     }
     AUTH.busy = false;
     AUTH.email = "";
+    AUTH.password = "";
     if (result.data.session) await handleAuthSession(result.data.session);
   } catch (e) {
     AUTH.busy = false;
-    AUTH.error = e.message;
+    const invalidCredentials = AUTH.mode === "login" &&
+      (e?.code === "invalid_credentials" || /invalid login credentials/i.test(errorText(e)));
+    AUTH.error = invalidCredentials ? "" : e.message;
     render();
+    if (invalidCredentials) toast("Credenciales incorrectas", "error");
   }
 }
 async function signInGoogle() {
   if (!AUTH.client) return toast("La conexión de Supabase todavía no está lista");
-  const { error } = await AUTH.client.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo: location.origin }
-  });
-  if (error) {
-    AUTH.error = `No se pudo iniciar con Google: ${error.message}. Comprueba que el proveedor Google esté configurado en Supabase.`;
+  if (AUTH.busy || AUTH.googleBusy) return;
+  AUTH.googleBusy = true;
+  AUTH.error = "";
+  render();
+  try {
+    const { error } = await AUTH.client.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: location.origin }
+    });
+    if (error) throw error;
+  } catch (error) {
+    AUTH.error = `No se pudo iniciar con Google: ${errorText(error)}. Comprueba que el proveedor Google esté configurado en Supabase.`;
+    render();
+  } finally {
+    AUTH.googleBusy = false;
     render();
   }
 }
@@ -1578,10 +1602,10 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
   ${AUTH.error ? `<p class="auth-message" role="status">${esc(AUTH.error)}</p>` : ""}
   <form onsubmit="event.preventDefault();${AUTH.mode === "update" ? "updatePassword()" : "submitAuth()"}">
     ${AUTH.mode === "update" ? "" : `<label for="auth-email">Correo electrónico</label><input class="t" id="auth-email" type="email" autocomplete="email" required value="${esc(AUTH.email)}" placeholder="tu@correo.com">`}
-    <label for="auth-password">${AUTH.mode === "update" ? "Nueva contraseña" : "Contraseña"}</label><div class="auth-password-field"><input class="t" id="auth-password" type="password" autocomplete="${AUTH.mode === "signup" || AUTH.mode === "update" ? "new-password" : "current-password"}" minlength="6" required placeholder="Al menos 6 caracteres"><button class="password-visibility" type="button" onclick="togglePasswordVisibility(this)" aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/><path class="password-eye-slash" d="m4 4 16 16"/></svg></button></div>
-    <button class="btn auth-submit" type="submit" ${AUTH.busy || !AUTH.client ? "disabled" : ""}>${AUTH.busy ? "Un momento…" : AUTH.mode === "signup" ? "Crear cuenta" : AUTH.mode === "update" ? "Guardar contraseña" : "Entrar"}</button>
+    <label for="auth-password">${AUTH.mode === "update" ? "Nueva contraseña" : "Contraseña"}</label><div class="auth-password-field"><input class="t" id="auth-password" type="password" autocomplete="${AUTH.mode === "signup" || AUTH.mode === "update" ? "new-password" : "current-password"}" minlength="6" required value="${esc(AUTH.password)}" placeholder="Al menos 6 caracteres"><button class="password-visibility" type="button" onclick="togglePasswordVisibility(this)" aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/><path class="password-eye-slash" d="m4 4 16 16"/></svg></button></div>
+    <button class="btn auth-submit" type="submit" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}>${AUTH.busy ? '<svg class="auth-spinner" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity=".28" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>Entrando…' : AUTH.mode === "signup" ? "Crear cuenta" : AUTH.mode === "update" ? "Guardar contraseña" : "Entrar"}</button>
   </form>
-  ${AUTH.mode === "login" ? `<button class="auth-link" onclick="resetPassword()">¿Olvidaste la contraseña?</button><div class="auth-divider"><span>o continúa con</span></div><button class="btn ghost auth-submit" onclick="signInGoogle()" ${AUTH.busy || !AUTH.client ? "disabled" : ""}>Continuar con Google</button>` : ""}
+  ${AUTH.mode === "login" ? `<button class="auth-link" onclick="resetPassword()">¿Olvidaste la contraseña?</button><div class="auth-divider"><span>o continúa con</span></div><button class="btn ghost auth-submit google-submit" onclick="signInGoogle()" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}><svg class="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#34A853" d="M6.3 14.7l6.6 4.8C14.5 15.1 18.9 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#FBBC05" d="M24 44c5.2 0 9.9-1.7 13.2-4.6l-6.1-5.2c-1.7 1.2-4.2 2-7.1 2-5.3 0-9.7-3.3-11.3-7.9l-6.6 5.1C9.4 39.6 16.1 44 24 44z"/><path fill="#EA4335" d="M6.3 14.7C4.8 17.4 4 20.6 4 24s.8 6.6 2.3 9.3l6.6-5.1c-.6-1.3-.9-2.7-.9-4.2s.3-2.9.9-4.2z"/></svg>${AUTH.googleBusy ? "Abriendo Google…" : "Continuar con Google"}</button>` : ""}
   ${AUTH.mode === "login" || AUTH.mode === "signup" ? `<p class="auth-switch">${AUTH.mode === "signup" ? "¿Ya tienes cuenta?" : "¿Aún no tienes cuenta?"} <button class="auth-link" onclick="setAuthMode('${AUTH.mode === "signup" ? "login" : "signup"}')">${AUTH.mode === "signup" ? "Inicia sesión" : "Regístrate"}</button></p>` : ""}
   <p class="auth-privacy">Tu cuenta mantiene tus ligas y pronósticos sincronizados. Sin cookies publicitarias.</p>
   </section></div>`;
