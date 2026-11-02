@@ -16,7 +16,7 @@ const SB_KEY = "sb_publishable_It1kV2ryR-toeyDeA4WNyw_aXcPThkG";
 let S = { league: null, me: "", preds: {}, joker: {}, friends: {}, th: "carbon" };
 try { Object.assign(S, JSON.parse(localStorage.getItem("pleno"))); } catch {}
 const save = () => { try { localStorage.setItem("pleno", JSON.stringify(S)); } catch {} };
-const V = { tab: "i", team: null, sub: "res", md: null, challengeMd: null, leagueSection: "ranking", instructionsOpen: false, instructionsNeedsFocus: false, profileOpen: false, profileNeedsFocus: false, leaguePickerOpen: false, leaguePickerNeedsFocus: false, tbl: "all", q: "", tabDirection: 1 };
+const V = { tab: "i", team: null, sub: "res", md: null, challengeMd: null, leagueSection: "ranking", instructionsOpen: false, instructionsNeedsFocus: false, profileOpen: false, profileNeedsFocus: false, leaguePickerOpen: false, leaguePickerNeedsFocus: false, mobileMoreOpen: false, tbl: "all", q: "", tabDirection: 1 };
 const D = { ready: false, err: null, matches: [], table: [], tH: [], tA: [], teams: [], by: {}, scorers: [], cur: 1, seasonStartYear: 0, tc: {}, polling: false, lastMatchesUpdate: 0, lastStandingsUpdate: 0, lastTeamsUpdate: 0, lastScorersUpdate: 0, lastStandingsPoll: 0, lastTeamsPoll: 0, lastScorersPoll: 0, matchesTimestampEstimated: false, standingsTimestampEstimated: false, teamsTimestampEstimated: false, scorersTimestampEstimated: false, matchesStale: false, standingsStale: false, teamsStale: false, scorersStale: false, matchesError: "", standingsError: "", teamsError: "", scorersError: "", minigames: { round_bonuses: [], minute_bonuses: [], red_cards: [] } };
 const AUTH = { client: null, session: null, ready: false, busy: false, googleBusy: false, syncing: false, minigameSyncing: false, mode: "login", email: "", password: "", error: "" };
 const ROOM = { loading: false, loaded: false, busy: false, archiving: false, error: "", archiveError: "", isAdmin: false, debts: [], chronicles: [], hallSeasons: [], dinnerLeaders: [], channel: null, leagueId: null, updatedAt: 0 };
@@ -93,6 +93,11 @@ function syncInstructionsModal() {
   }
 }
 function handleInstructionsKeydown(event) {
+  if (event.key === "Escape" && V.mobileMoreOpen && !V.instructionsOpen && !V.profileOpen && !V.leaguePickerOpen) {
+    V.mobileMoreOpen = false;
+    render();
+    return;
+  }
   const modal = V.leaguePickerOpen
     ? document.querySelector(".league-picker-dialog")
     : V.profileOpen
@@ -989,7 +994,12 @@ function closeProfile() {
   V.profileOpen = false;
   document.body.classList.remove("instructions-visible");
   render();
-  requestAnimationFrame(() => document.querySelector(".profile-button")?.focus());
+  requestAnimationFrame(() => {
+    const target = window.matchMedia("(max-width: 767px)").matches
+      ? document.querySelector(".mobile-nav-profile")
+      : document.querySelector(".profile-button");
+    target?.focus();
+  });
 }
 async function loadOwnProfilePhoto() {
   const userId = AUTH.session?.user?.id;
@@ -1521,6 +1531,32 @@ function tJuego() {
 /* ---------- vistas ---------- */
 const infoButton = () => `<button class="info-button" type="button" onclick="openInstructions()" aria-label="Cómo se juega" title="Cómo se juega"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg></button>`;
 const profileButton = () => `<button class="profile-button" type="button" onclick="openProfile()" aria-label="Abrir perfil" title="Mi perfil"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg></button>`;
+function toggleMobileMore() {
+  V.mobileMoreOpen = !V.mobileMoreOpen;
+  render();
+}
+function mobileNavigation(tabs) {
+  const primary = new Set(["i", "p", "c"]);
+  const extras = tabs.filter(([key]) => !primary.has(key));
+  const icon = {
+    i: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+    p: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18m-9-9a15 15 0 0 1 0 18m0-18a15 15 0 0 0 0 18"/>',
+    c: '<path d="M4 19V5m0 14h17M8 15l4-4 3 2 5-6"/>',
+    profile: '<circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
+    more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'
+  };
+  const item = (key, label) => `<button class="mobile-nav-item ${V.tab === key ? "is-active" : ""}" type="button" onclick="switchTab('${key}')" ${V.tab === key ? 'aria-current="page"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true">${icon[key]}</svg><span>${label}</span></button>`;
+  const moreActive = extras.some(([key]) => V.tab === key);
+  return `<div class="mobile-nav-shell">
+    ${V.mobileMoreOpen ? '<button class="mobile-nav-backdrop" type="button" onclick="toggleMobileMore()" aria-label="Cerrar menú de navegación"></button>' : ""}
+    <div class="mobile-more-menu" ${V.mobileMoreOpen ? "" : "hidden"} aria-label="Más secciones">${extras.map(([key, label]) => `<button type="button" class="${V.tab === key ? "is-active" : ""}" onclick="switchTab('${key}')" ${V.tab === key ? 'aria-current="page"' : ""}>${label}<span aria-hidden="true">→</span></button>`).join("")}<button type="button" onclick="V.mobileMoreOpen=false;openInstructions()">Cómo se juega<span aria-hidden="true">→</span></button></div>
+    <div class="mobile-bottom-nav" role="navigation" aria-label="Navegación principal">
+      ${item("i", "Inicio")}${item("p", "Partidos")}${item("c", "Liga")}
+      <button class="mobile-nav-item mobile-nav-profile" type="button" onclick="V.mobileMoreOpen=false;openProfile()" aria-label="Abrir perfil"><svg viewBox="0 0 24 24" aria-hidden="true">${icon.profile}</svg><span>Perfil</span></button>
+      <button class="mobile-nav-item mobile-nav-more ${V.mobileMoreOpen || moreActive ? "is-active" : ""}" type="button" onclick="toggleMobileMore()" aria-expanded="${V.mobileMoreOpen}" aria-label="Más secciones"><svg viewBox="0 0 24 24" aria-hidden="true">${icon.more}</svg><span>Más</span></button>
+    </div>
+  </div>`;
+}
 function instructionsModal() {
   if (!V.instructionsOpen || !AUTH.session) return "";
   return `<div class="instructions-overlay" role="presentation" onclick="if(event.target===this)closeInstructions()"><section class="instructions-dialog" role="dialog" aria-modal="true" aria-labelledby="instructions-title" aria-describedby="instructions-intro" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">GUÍA RÁPIDA · PLENO</span><h2 id="instructions-title">Aquí se juega así.</h2><p id="instructions-intro">LaLiga se disfruta más cuando cada partido cuenta.</p></div><button class="instructions-close" type="button" onclick="closeInstructions()" aria-label="Cerrar instrucciones">×</button></header><div class="instructions-grid"><article class="instructions-card"><span class="instructions-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 8h18v12H3zM7 8V5h10v3M7 13h4m-4 3h7"/></svg></span><div><h3>El objetivo</h3><p>Adivina los resultados de LaLiga, suma puntos y compite con tus amigos. Crea una liga o únete con su código.</p></div></article><article class="instructions-card"><span class="instructions-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3z"/></svg></span><div><h3>Puntúa por acertar</h3><p><b>10 puntos</b> por pleno, <b>7</b> por acertar el signo y la diferencia, y <b>3</b> por acertar el signo del resultado.</p></div></article><article class="instructions-card"><span class="instructions-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v18m6-15H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H5"/></svg></span><div><h3>El comodín</h3><p>Activa tu <b>Joker x2</b> en un partido y duplica los puntos que consigas en ese pronóstico.</p></div></article><article class="instructions-card"><span class="instructions-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.5"/><path d="m4 4 16 16"/></svg></span><div><h3>Modo ciego</h3><p>Las porras de los demás permanecen ocultas hasta el pitido inicial. Así nadie puede copiar antes de jugar.</p></div></article></div><footer class="instructions-footer"><span>⚽ Una hora antes del partido, los pronósticos se bloquean.</span><button class="btn instructions-done" type="button" onclick="closeInstructions()">¡A jugar!</button></footer></section></div>`;
@@ -1813,7 +1849,8 @@ function tInicio() {
   const lv = D.matches.filter(live), n = nxt.find((m) => !live(m)), me = total(mine()), rank = board().findIndex((x) => x.me) + 1;
   const pend = D.matches.filter((m) => m.matchday === D.cur && open(m) && !S.preds[m.id]).length;
   const nextCard = n ? `<div class="home-next"><span class="home-next-label">${live(n) ? "PARTIDO EN JUEGO" : "PRÓXIMO PARTIDO"}</span><div class="home-next-teams"><span>${esc(clubName(n.homeTeam))}</span><b>VS</b><span>${esc(clubName(n.awayTeam))}</span></div><small>${live(n) ? "Sigue el marcador en directo" : `${fmtD(n.utcDate)} · empieza en ${cd(n.utcDate)}`}</small></div>` : `<div class="home-next"><span class="home-next-label">LALIGA EA SPORTS</span><div class="home-next-teams"><span>La jornada</span><b>38</b></div><small>Consulta la clasificación y las estadísticas de la temporada.</small></div>`;
-  return `<section class="home-hero">
+  return `<section class="home-dashboard" aria-label="Resumen de tu liga">
+  <div class="home-dashboard-top"><section class="home-hero">
     <div class="home-hero-copy"><span class="home-kicker"><i></i> TU JUEGO · TU LIGA</span><h1>La jornada se juega <em>también aquí.</em></h1><p>Pronostica, suma puntos y escala posiciones. Cada partido cuenta.</p>
       <button class="btn home-cta" onclick="switchTab('p')">Hacer mis pronósticos <span aria-hidden="true">→</span></button>
     </div>
@@ -1823,10 +1860,14 @@ function tInicio() {
   <div class="stats home-stats"><div><span>TUS PUNTOS</span><b>${me.pts}</b><small>en la temporada</small></div><div><span>POSICIÓN</span><b>${rank}<i>º</i></b><small>en ${esc(S.league.name)}</small></div><div><span>MARCADOR EXACTO</span><b>${me.ex}</b><small>plenos conseguidos</small></div></div>
   <button class="home-scout" onclick="switchTab('g')"><span class="home-scout-icon" aria-hidden="true">✦</span><span><small>RETOS DIARIOS · PLENO</small><b>Compite incluso entre jornadas</b><i>Scouting, ruleta VAR y Minuto de Oro.</i></span><strong>Jugar <span aria-hidden="true">→</span></strong></button>
   ${pend ? `<div class="alert home-alert"><span><b>Te faltan ${pend} pronóstico${pend === 1 ? "" : "s"}</b> para completar la jornada ${D.cur}.</span><button class="btn" onclick="switchTab('p')">Completar ahora <span aria-hidden="true">→</span></button></div>` : ""}
-  ${lv.length ? `<div class="section-title"><span class="section-pulse"></span><h2>En directo</h2><span class="section-rule"></span><small>${lv.length} ${lv.length === 1 ? "partido" : "partidos"}</small></div>${lv.map(mc).join("")}` : ""}
-  ${n ? `<div class="section-title"><h2>La próxima cita</h2><span class="section-rule"></span><small>${cd(n.utcDate)}</small></div>${mc(n)}` : ""}
-  <div class="home-lower"><section><div class="section-title"><h2>Clasificación LaLiga</h2><span class="section-rule"></span><button class="section-link" onclick="switchTab('c')">Ver todo →</button></div><div class="card home-table"><table aria-label="Primeros puestos de la clasificación de LaLiga"><thead><tr><th scope="col">#</th><th scope="col">Club</th><th scope="col" title="Partidos jugados">PJ</th><th scope="col" title="Ganados">G</th><th scope="col" title="Empatados">E</th><th scope="col" title="Perdidos">P</th><th scope="col" title="Diferencia de goles">DG</th><th scope="col">PTS</th></tr></thead><tbody>${D.table.slice(0, 5).map(trow).join("")}</tbody></table><div class="home-table-foot"><span>TOP 5 · JORNADA ${D.cur}</span><button onclick="switchTab('c')">Ver tabla completa <span aria-hidden="true">→</span></button></div></div></section>
-  <section><div class="section-title"><h2>Pichichi</h2><span class="section-rule"></span><button class="section-link" onclick="switchTab('s')">Estadísticas →</button></div><div class="card home-scorers">${D.scorers.slice(0, 5).map(plRow).join("") || '<span class="mu">Sin datos</span>'}</div></section></div>${upcomingCompetitions()}`;
+  </div>
+  <div class="home-dashboard-grid"><div class="home-dashboard-main">
+    ${lv.length ? `<section><div class="section-title"><span class="section-pulse"></span><h2>En directo</h2><span class="section-rule"></span><small>${lv.length} ${lv.length === 1 ? "partido" : "partidos"}</small></div>${lv.map(mc).join("")}</section>` : ""}
+    ${n ? `<section><div class="section-title"><h2>La próxima cita</h2><span class="section-rule"></span><small>${cd(n.utcDate)}</small></div>${mc(n)}</section>` : ""}
+  </div><aside class="home-dashboard-aside">
+    <section><div class="section-title"><h2>Clasificación LaLiga</h2><span class="section-rule"></span><button class="section-link" onclick="switchTab('c')">Ver todo →</button></div><div class="card home-table"><table aria-label="Primeros puestos de la clasificación de LaLiga"><thead><tr><th scope="col">#</th><th scope="col">Club</th><th scope="col" title="Partidos jugados">PJ</th><th scope="col" title="Ganados">G</th><th scope="col" title="Empatados">E</th><th scope="col" title="Perdidos">P</th><th scope="col" title="Diferencia de goles">DG</th><th scope="col">PTS</th></tr></thead><tbody>${D.table.slice(0, 5).map(trow).join("")}</tbody></table><div class="home-table-foot"><span>TOP 5 · JORNADA ${D.cur}</span><button onclick="switchTab('c')">Ver tabla completa <span aria-hidden="true">→</span></button></div></div></section>
+    <section><div class="section-title"><h2>Pichichi</h2><span class="section-rule"></span><button class="section-link" onclick="switchTab('s')">Estadísticas →</button></div><div class="card home-scorers">${D.scorers.slice(0, 5).map(plRow).join("") || '<span class="mu">Sin datos</span>'}</div></section>
+  </aside></div>${upcomingCompetitions()}</section>`;
 }
 function plRow(s, i) { return `<div class="pl"><b class="mu" style="width:18px">${i + 1}</b>${crest(s.team, "s")}<div><div class="n">${esc(s.player.name)}</div><small class="mu">${nm(s.team)} · ${s.playedMatches} PJ</small></div><div class="r"><span class="mu">${s.assists ?? 0} A</span><b>${s.goals} G</b></div></div>`; }
 function tPart() {
@@ -1951,7 +1992,12 @@ function cycleTheme() {
   setTh(themes[(themes.indexOf(S.th) + 1) % themes.length]);
 }
 function switchTab(tab) {
-  if (V.tab === tab) return;
+  const closeMoreMenu = V.mobileMoreOpen;
+  V.mobileMoreOpen = false;
+  if (V.tab === tab) {
+    if (closeMoreMenu) render();
+    return;
+  }
   const order = ["i", "p", "c", "k", "s", "l", "g"];
   V.tabDirection = order.indexOf(tab) >= order.indexOf(V.tab) ? 1 : -1;
   const update = () => { V.tab = tab; V.team = null; render(); };
@@ -1997,7 +2043,7 @@ function render() {
   const themeName = { carbon: "carbón", blanco: "claro", medianoche: "medianoche" }[S.th] || "carbón";
   const syncError = Boolean(D.matchesError || D.standingsError || D.teamsError || D.scorersError);
   const syncStale = D.matchesStale || D.standingsStale || D.teamsStale || D.scorersStale;
-  a.innerHTML = `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><button class="league-switcher" type="button" onclick="openLeaguePicker()" aria-label="Mis ligas: cambiar de liga o unirme a otra" title="Mis ligas · cambiar de liga o unirme a otra"><span class="league-switcher-label">Mis ligas</span><b>${esc(S.league.name)}</b><i aria-hidden="true">⌄</i></button><span class="sp"></span><div class="top-actions"><button class="btn ghost theme-button ${S.th}" onclick="cycleTheme()" aria-label="Cambiar fondo. Tema actual: ${themeName}" title="Cambiar fondo · ${themeName}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></button><button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div><nav aria-label="Secciones principales">${tabs.map(([k, n]) => `<button class="${V.tab === k ? "on" : ""}" onclick="switchTab('${k}')" ${V.tab === k ? 'aria-current="page"' : ""}>${n}</button>`).join("")}</nav><div class="data-sync ${syncError ? "has-error" : syncStale ? "is-stale" : ""}" aria-label="Estado de actualización de datos" title="Actualización automática: partidos cada 30 segundos, clasificación cada minuto, goleadores cada 10 minutos y clubes cada día"><i></i><span class="${freshnessClass(D.matchesStale, D.matchesError)}">${esc(freshnessLabel("Partidos", D.lastMatchesUpdate, D.matchesStale, D.matchesError))}</span><span class="${freshnessClass(D.standingsStale, D.standingsError)}">${esc(freshnessLabel("Clasificación", D.lastStandingsUpdate, D.standingsStale, D.standingsError))}</span><span class="${freshnessClass(D.teamsStale, D.teamsError)}">${esc(freshnessLabel("Clubes", D.lastTeamsUpdate, D.teamsStale, D.teamsError))}</span><span class="${freshnessClass(D.scorersStale, D.scorersError)}">${esc(freshnessLabel("Goleadores", D.lastScorersUpdate, D.scorersStale, D.scorersError))}</span></div></div><main class="tab-content" style="--tab-shift:${V.tabDirection * 1}">${body}</main>`;
+  a.innerHTML = `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><button class="league-switcher" type="button" onclick="openLeaguePicker()" aria-label="Mis ligas: cambiar de liga o unirme a otra" title="Mis ligas · cambiar de liga o unirme a otra"><span class="league-switcher-label">Mis ligas</span><b>${esc(S.league.name)}</b><i aria-hidden="true">⌄</i></button><span class="sp"></span><div class="top-actions"><button class="btn ghost theme-button ${S.th}" onclick="cycleTheme()" aria-label="Cambiar fondo. Tema actual: ${themeName}" title="Cambiar fondo · ${themeName}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></button><button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div><nav class="desktop-nav" aria-label="Secciones principales">${tabs.map(([k, n]) => `<button class="${V.tab === k ? "on" : ""}" onclick="switchTab('${k}')" ${V.tab === k ? 'aria-current="page"' : ""}>${n}</button>`).join("")}</nav><div class="data-sync ${syncError ? "has-error" : syncStale ? "is-stale" : ""}" aria-label="Estado de actualización de datos" title="Actualización automática: partidos cada 30 segundos, clasificación cada minuto, goleadores cada 10 minutos y clubes cada día"><i></i><span class="${freshnessClass(D.matchesStale, D.matchesError)}">${esc(freshnessLabel("Partidos", D.lastMatchesUpdate, D.matchesStale, D.matchesError))}</span><span class="${freshnessClass(D.standingsStale, D.standingsError)}">${esc(freshnessLabel("Clasificación", D.lastStandingsUpdate, D.standingsStale, D.standingsError))}</span><span class="${freshnessClass(D.teamsStale, D.teamsError)}">${esc(freshnessLabel("Clubes", D.lastTeamsUpdate, D.teamsStale, D.teamsError))}</span><span class="${freshnessClass(D.scorersStale, D.scorersError)}">${esc(freshnessLabel("Goleadores", D.lastScorersUpdate, D.scorersStale, D.scorersError))}</span></div></div><main class="tab-content" style="--tab-shift:${V.tabDirection * 1}">${body}</main>${mobileNavigation(tabs)}`;
   const topActions = a.querySelector(".top-actions");
   if (topActions) topActions.insertAdjacentHTML("afterbegin", infoButton() + profileButton());
   a.insertAdjacentHTML("beforeend", instructionsModal() + profileModal() + leaguePickerModal());
