@@ -22,7 +22,7 @@ const AUTH = { client: null, session: null, ready: false, busy: false, syncing: 
 const ROOM = { loading: false, loaded: false, busy: false, archiving: false, error: "", archiveError: "", isAdmin: false, debts: [], chronicles: [], hallSeasons: [], dinnerLeaders: [], channel: null, leagueId: null, updatedAt: 0 };
 const CHAT = { loading: false, sending: false, uploadingAvatar: false, error: "", messages: [], avatars: {}, avatarPaths: {}, channel: null, channelLeagueId: null, loadedLeagueId: null, subscribed: false, input: "" };
 const PROFILE = { loading: false, error: "" };
-const LEAGUES = { items: [], loading: false, busy: false, error: "" };
+const LEAGUES = { items: [], loading: false, busy: false, error: "", warning: "" };
 const GAME = { loading: false, busy: false, spinning: false, spinStage: "", wheelRotation: 0, wheelResult: null, data: null, error: "", date: "" };
 const WHEEL_SECTIONS = [
   { type: "boots_gold", title: "Botas de Oro", subtitle: "+5 puntos" },
@@ -441,14 +441,26 @@ async function syncLeagueData(leagueId, userId) {
   save();
 }
 async function loadCloudLeague(preferredLeagueId = null) {
-  let query = AUTH.client.from("league_members")
-    .select("league_id,display_name,leagues!inner(id,name,invite_code,owner_id)")
-    .eq("user_id", AUTH.session.user.id);
-  const { data, error } = await query.order("joined_at", { ascending: true });
+  const loadMemberships = (includeOwner) => AUTH.client.from("league_members")
+    .select(`league_id,display_name,leagues!inner(id,name,invite_code${includeOwner ? ",owner_id" : ""})`)
+    .eq("user_id", AUTH.session.user.id)
+    .order("joined_at", { ascending: true });
+  LEAGUES.warning = "";
+  let { data, error } = await loadMemberships(true);
+  let hasOwnerColumn = true;
+  const errorMessage = errorText(error).toLowerCase();
+  if (error && errorMessage.includes("owner_id") &&
+      (error.code === "42703" || error.code === "PGRST204" || /does not exist|not find|schema cache/.test(errorMessage))) {
+    ({ data, error } = await loadMemberships(false));
+    if (!error) {
+      hasOwnerColumn = false;
+      LEAGUES.warning = "Tus ligas se han cargado, pero falta la migración de borrado de ligas. Ejecuta supabase-delete-league.sql en el SQL Editor de Supabase para activar esa función.";
+    }
+  }
   if (error) throw error;
   LEAGUES.items = (data || []).map((member) => {
     const league = Array.isArray(member.leagues) ? member.leagues[0] : member.leagues;
-    return league ? { id: league.id, name: league.name, code: league.invite_code, displayName: member.display_name, ownerId: league.owner_id } : null;
+    return league ? { id: league.id, name: league.name, code: league.invite_code, displayName: member.display_name, ownerId: hasOwnerColumn ? league.owner_id : null } : null;
   }).filter(Boolean);
   let preferredId = preferredLeagueId;
   if (!preferredId) {
@@ -1494,7 +1506,7 @@ function leaguePickerModal() {
     const isOwner = league.ownerId === AUTH.session.user.id;
     return `<div class="league-picker-row"><button class="league-picker-option ${league.id === S.league?.id ? "is-current" : ""}" type="button" onclick="switchLeague('${esc(league.id)}')" ${LEAGUES.busy ? "disabled" : ""}><span><b>${esc(league.name)}</b><small>${league.id === S.league?.id ? "Liga actual" : `Jugando como ${esc(league.displayName)}`}${isOwner ? " · Creador" : ""}</small></span>${league.id === S.league?.id ? '<strong>ACTIVA</strong>' : '<i aria-hidden="true">→</i>'}</button>${isOwner ? `<button class="league-delete-button" type="button" onclick="deleteLeague('${esc(league.id)}')" aria-label="Borrar liga ${esc(league.name)}" title="Borrar liga" ${LEAGUES.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>` : ""}</div>`;
   }).join("");
-  return `<div class="instructions-overlay league-picker-overlay" role="presentation" onclick="if(event.target===this)closeLeaguePicker()"><section class="instructions-dialog league-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="league-picker-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TUS COMPETICIONES</span><h2 id="league-picker-title">Mis ligas</h2><p>Cambia de liga o únete a otra con su código.</p></div><button class="instructions-close league-picker-close" type="button" onclick="closeLeaguePicker()" aria-label="Cerrar ligas">×</button></header><div class="league-picker-list">${rows || '<p class="profile-hint">Todavía no perteneces a ninguna liga.</p>'}</div><form class="league-picker-join" onsubmit="event.preventDefault();joinAnotherLeague()"><label for="league-join-code">Unirme a otra liga</label><div><input class="t" id="league-join-code" maxlength="10" autocomplete="off" placeholder="Código de invitación" required ${LEAGUES.busy ? "disabled" : ""}><button class="btn" type="submit" ${LEAGUES.busy ? "disabled" : ""}>${LEAGUES.busy ? "Uniéndote…" : "Unirme"}</button></div></form>${LEAGUES.error ? `<p class="profile-error" role="alert">${esc(LEAGUES.error)}</p>` : ""}</section></div>`;
+  return `<div class="instructions-overlay league-picker-overlay" role="presentation" onclick="if(event.target===this)closeLeaguePicker()"><section class="instructions-dialog league-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="league-picker-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TUS COMPETICIONES</span><h2 id="league-picker-title">Mis ligas</h2><p>Cambia de liga o únete a otra con su código.</p></div><button class="instructions-close league-picker-close" type="button" onclick="closeLeaguePicker()" aria-label="Cerrar ligas">×</button></header><div class="league-picker-list">${rows || '<p class="profile-hint">Todavía no perteneces a ninguna liga.</p>'}</div>${LEAGUES.warning ? `<p class="profile-hint" role="status">${esc(LEAGUES.warning)}</p>` : ""}<form class="league-picker-join" onsubmit="event.preventDefault();joinAnotherLeague()"><label for="league-join-code">Unirme a otra liga</label><div><input class="t" id="league-join-code" maxlength="10" autocomplete="off" placeholder="Código de invitación" required ${LEAGUES.busy ? "disabled" : ""}><button class="btn" type="submit" ${LEAGUES.busy ? "disabled" : ""}>${LEAGUES.busy ? "Uniéndote…" : "Unirme"}</button></div></form>${LEAGUES.error ? `<p class="profile-error" role="alert">${esc(LEAGUES.error)}</p>` : ""}</section></div>`;
 }
 async function deleteLeague(leagueId) {
   const league = LEAGUES.items.find((item) => item.id === leagueId);
@@ -1563,6 +1575,7 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
 const leagueGate = () => `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><span class="sp"></span><div class="top-actions">${infoButton()}<button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div></div><main>
 <div class="hero"><h1>Acierta el marcador.<br>Gana a tus amigos.</h1><p>Solo LaLiga EA Sports. Pronostica antes del pitido: cuanto más te acerques, más puntos.</p></div>
 ${AUTH.error ? `<div class="card err">${esc(AUTH.error)}</div>` : ""}
+${LEAGUES.warning ? `<div class="card league-setup-warning" role="status">${esc(LEAGUES.warning)}</div>` : ""}
 <h2>Empieza a jugar</h2><div class="gate">
 <form class="card" onsubmit="event.preventDefault();mk()"><b>Crear una liga</b><input class="t" id="gn" placeholder="Tu nombre" maxlength="30" required><input class="t" id="ln" placeholder="Nombre de la liga" maxlength="50" required><button class="btn" type="submit">Crear liga</button></form>
 <form class="card" onsubmit="event.preventDefault();jn()"><b>Unirme con código</b><input class="t" id="gn2" placeholder="Tu nombre" maxlength="30" required><input class="t" id="lc" placeholder="Código de invitación" maxlength="10" required><button class="btn ghost" type="submit">Unirme a la liga</button></form></div>
