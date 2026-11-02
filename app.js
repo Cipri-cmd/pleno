@@ -1579,7 +1579,7 @@ async function deleteLeague(leagueId) {
 }
 const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria-label="PLENO, la porra de LaLiga">
   <a class="auth-brand-name" href="/" aria-label="PLENO, inicio"><img class="auth-brand-mark" src="icon.svg" alt=""><span>PLENO</span><i>FÚTBOL · AMIGOS · PORRA</i></a>
-  <span class="auth-eyebrow"><span aria-hidden="true"></span> LA PORRA DE LALIGA</span>
+  <span class="auth-eyebrow"><span aria-hidden="true"></span> LA PORRA EMPIEZA AQUÍ</span>
   <h1><span class="auth-heading-line">El fútbol no se mira.</span><span class="auth-heading-accent">Se vive en equipo.</span></h1>
   <p>Haz tu porra. Reta a los tuyos. Que hable el marcador.</p>
   <div class="auth-pitch-wrap">
