@@ -375,6 +375,7 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
 .tab-content .mc.isl{background:linear-gradient(120deg,color-mix(in srgb,var(--ac) 12%,var(--s1)),color-mix(in srgb,var(--s1) 82%,transparent))}
 .tab-content button,.tab-content input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),.tab-content select,.tab-content textarea{min-height:44px}
 .tab-content .sc input{min-height:44px}
+.top .desktop-nav button,.top .bar .league-switcher,.top .top-actions>button{min-height:44px}
 .home-dashboard{display:grid;gap:clamp(20px,2.5vw,32px)}
 .home-dashboard-top{display:grid;gap:14px;min-width:0}
 .home-dashboard-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(300px,1fr);align-items:start;gap:clamp(20px,2.2vw,32px)}
@@ -406,6 +407,8 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
   .top nav.desktop-nav{display:none}
   .top .bar,.top .data-sync{max-width:100%}
   .top .bar{padding:10px 14px}
+  .top .bar .league-switcher{min-height:44px}
+  .top .top-actions>button{width:44px;height:44px;min-width:44px;min-height:44px}
   .top .top-actions .info-button,.top .top-actions .profile-button{display:none}
   main.tab-content{padding:16px 14px calc(112px + env(safe-area-inset-bottom,0px))}
   .home-dashboard{gap:18px}
