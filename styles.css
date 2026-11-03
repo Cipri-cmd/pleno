@@ -494,3 +494,13 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
   .top .bar .league-switcher{width:29vw;max-width:120px;padding:5px 6px}
   .top .bar .league-switcher>b{font-size:9px}
 }
+@media(max-width:640px){
+  .top .bar .league-switcher{display:flex;flex:0 1 160px;gap:6px;width:auto;max-width:38vw;min-width:88px;min-height:38px;padding:7px 8px;border-radius:10px}
+  .top .bar .league-switcher-label{display:none}
+  .top .bar .league-switcher>b{flex:1;min-width:0;font-size:10px}
+  .top .bar .league-switcher>i{display:grid;width:18px;height:18px;flex:none;margin-left:auto}
+}
+@media(max-width:390px){
+  .top .bar .league-switcher{max-width:34vw;min-width:78px;padding:6px}
+  .top .bar .league-switcher>b{font-size:9px}
+}
