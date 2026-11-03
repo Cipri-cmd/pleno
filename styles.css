@@ -658,3 +658,19 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
   .prediction-overlay.is-closing .prediction-sheet{opacity:0}
   .match-sheet-trigger,.prediction-score-step,.prediction-joker,.prediction-save{transition:none}
 }
+.prediction-card-score{border-color:color-mix(in srgb,var(--ac2) 32%,var(--ln))!important;color:var(--ac2)}
+.tab-content img,.brand-lockup img,.auth-brand-mark,.room-avatar img,.profile-photo-stage img{
+  animation:image-arrive .42s cubic-bezier(.2,.8,.2,1) both;
+  transition:transform .24s cubic-bezier(.2,.8,.2,1),filter .24s ease;
+}
+.tab-content img:hover,.brand-lockup:hover img,.room-avatar:hover img,.profile-photo-stage:hover img{
+  transform:translateY(-2px) scale(1.045);
+  filter:drop-shadow(0 5px 10px color-mix(in srgb,var(--ac2) 24%,transparent));
+}
+.mc .tm:hover .cr{transform:translateY(-2px) scale(1.08) rotate(-3deg)}
+.league-avatar-picker:hover .room-avatar{transform:translateY(-2px) scale(1.06)}
+@keyframes image-arrive{from{transform:translateY(5px) scale(.96);opacity:.45}to{transform:translateY(0) scale(1);opacity:1}}
+@media(prefers-reduced-motion:reduce){
+  .tab-content img,.brand-lockup img,.auth-brand-mark,.room-avatar img,.profile-photo-stage img{animation:none;transition:none}
+  .tab-content img:hover,.brand-lockup:hover img,.room-avatar:hover img,.profile-photo-stage:hover img,.mc .tm:hover .cr,.league-avatar-picker:hover .room-avatar{transform:none;filter:none}
+}

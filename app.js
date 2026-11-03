@@ -2179,17 +2179,17 @@ function predictionSheetSaved() {
   setTimeout(() => closePredictionSheet(true), 520);
 }
 function mc(m) {
-  const id = m.id, p = S.preds[id], jk = S.joker[m.matchday] === id || S.joker[id] === true, o = open(m), lock = predictionLocked(m), f = fin(m), l = live(m), r = res(m);
-  const mid = f || l ? `<div class="big">${r.h}<i>–</i>${r.a}</div>` : `<div class="big mu">vs</div>`;
-  let foot;
-  if (o) foot = `<div class="pred"><div class="sc"><button onclick="stp(${id},'h',-1)" aria-label="Menos goles local">−</button><input id="h${id}" value="${p ? p.h : 0}" inputmode="numeric" aria-label="Goles local"><button onclick="stp(${id},'h',1)" aria-label="Más goles local">+</button><b>:</b><button onclick="stp(${id},'a',-1)" aria-label="Menos goles visitante">−</button><input id="a${id}" value="${p ? p.a : 0}" inputmode="numeric" aria-label="Goles visitante"><button onclick="stp(${id},'a',1)" aria-label="Más goles visitante">+</button></div><button class="jk ${jk ? "on" : ""}" onclick="jok(${m.matchday},${id})">★ Joker x2</button><button class="btn" onclick="sv(${id})">${p ? "Actualizar" : "Guardar porra"}</button></div>${sugg(m)}`;
-  else {
-    const g = f && p ? pts(p, r, jk) : null;
-    const fr = Object.values(S.friends).filter((x) => x.p[id]).map((x) => `<span class="chip">${esc(x.n)} ${x.p[id][0]}–${x.p[id][1]}</span>`).join("");
-    foot = `<div class="pred done"><span>${p ? `Tu porra: <b>${p.h}–${p.a}</b>${jk ? " ★" : ""}` : '<span class="mu">Sin porra</span>'}</span>${g != null ? `<span class="pts p${g ? 1 : 0}">+${g} pts</span>` : ""}</div>${lock ? `<p class="prediction-lock-note">Pronósticos cerrados: se bloquean una hora antes del inicio (${fmtD(m.utcDate)}).</p>` : ""}${fr ? `<div class="chips">${fr}</div>` : ""}`;
-  }
+  const id = m.id, prediction = S.preds[id], editable = open(m), finished = fin(m), inPlay = live(m), result = res(m);
+  const matchScore = finished || inPlay
+    ? `<div class="big">${result.h}<i>–</i>${result.a}</div>`
+    : prediction
+      ? `<div class="big prediction-card-score" aria-label="Tu pronóstico">${prediction.h}<i>–</i>${prediction.a}</div>`
+      : '<div class="big mu">vs</div>';
+  const action = editable
+    ? prediction ? `Editar pronóstico · ${prediction.h}–${prediction.a}` : "Hacer pronóstico"
+    : prediction ? `Tu pronóstico · ${prediction.h}–${prediction.a}` : "Ver partido";
   const transitionName = PREDICTION.transitionId === id ? `style="view-transition-name:pleno-match-${id}"` : "";
-  return `<article class="mc ${l ? "isl" : ""} ${f ? "finished" : ""} ${o ? "predictable" : ""}" data-match-id="${id}" ${transitionName}><div class="mh"><span>${status(m)}</span><span>JORNADA ${m.matchday}</span></div><div class="row"><div class="tm" onclick="openTeam(${m.homeTeam.id})">${crest(m.homeTeam)}<b>${nm(m.homeTeam)}</b></div>${mid}<div class="tm" onclick="openTeam(${m.awayTeam.id})">${crest(m.awayTeam)}<b>${nm(m.awayTeam)}</b></div></div>${foot}<button class="match-sheet-trigger" type="button" onclick="openPredictionSheet(${id},this)">${o ? (p ? "Editar pronóstico" : "Hacer pronóstico") : "Ver partido y pronósticos"}<span aria-hidden="true">↗</span></button></article>`;
+  return `<article class="mc ${inPlay ? "isl" : ""} ${finished ? "finished" : ""} ${editable ? "predictable" : ""}" data-match-id="${id}" ${transitionName}><div class="mh"><span>${status(m)}</span><span>JORNADA ${m.matchday}</span></div><div class="row"><div class="tm" onclick="openTeam(${m.homeTeam.id})">${crest(m.homeTeam)}<b>${nm(m.homeTeam)}</b></div>${matchScore}<div class="tm" onclick="openTeam(${m.awayTeam.id})">${crest(m.awayTeam)}<b>${nm(m.awayTeam)}</b></div></div><button class="match-sheet-trigger" type="button" onclick="openPredictionSheet(${id},this)">${action}<span aria-hidden="true">↗</span></button></article>`;
 }
 const trow = (r, i) => { const gd = Number.isFinite(r.goalDifference) ? r.goalDifference : null; return `<tr><td>${i + 1}</td><td><div class="tc" onclick="openTeam(${r.team.id})">${crest(r.team, "s")}${nm(r.team)}</div></td><td>${r.playedGames}</td><td>${r.won}</td><td>${r.draw}</td><td>${r.lost}</td><td>${gd == null ? "–" : `${gd > 0 ? "+" : ""}${gd}`}</td><td><b>${r.points}</b></td></tr>`; };
 
