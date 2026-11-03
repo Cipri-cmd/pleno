@@ -36,12 +36,7 @@ created_challenge as (
     now(),
     closes_at
   from challenge_config
-  on conflict (challenge_date) do update
-    set featured_match_id = coalesce(
-      public.daily_challenges.featured_match_id,
-      excluded.featured_match_id
-    ),
-    clues = excluded.clues
+  on conflict (challenge_date) do nothing
   returning id
 )
 insert into private.daily_challenge_answers (challenge_id, answer_normalized, accepted_answers)
