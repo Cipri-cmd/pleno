@@ -2039,25 +2039,19 @@ function switchTab(tab) {
     if (closeMoreMenu) render();
     return;
   }
-  const order = ["i", "p", "c", "k", "s", "l", "g"];
-  V.tabDirection = order.indexOf(tab) >= order.indexOf(V.tab) ? 1 : -1;
   const update = () => { V.tab = tab; V.team = null; render(); };
-  if (typeof document.startViewTransition === "function") {
-    document.startViewTransition(update);
-    if (tab === "g" && GAME.date !== madridDate()) loadScoutGame();
-    return;
-  }
   update();
   if (tab === "g" && GAME.date !== madridDate()) loadScoutGame();
-  const main = $("#app main");
-  if (main) {
+  requestAnimationFrame(() => {
+    const main = $("#app main");
+    if (!main) return;
     main.classList.remove("tab-enter");
     void main.offsetWidth;
     main.classList.add("tab-enter");
     main.addEventListener("animationend", (event) => {
       if (event.target === main) main.classList.remove("tab-enter");
-    });
-  }
+    }, { once: true });
+  });
 }
 function render() {
   const a = $("#app");
