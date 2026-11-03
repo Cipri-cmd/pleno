@@ -482,25 +482,21 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
   .top .bar .top-actions>button{width:34px;height:34px;min-width:34px;min-height:34px!important}
 }
 .top .bar .brand-lockup{order:1}
-.top .bar .sp{order:2}
-.top .bar .league-switcher{order:3;display:flex;flex:0 1 auto;align-items:center;gap:8px;width:auto;max-width:min(34vw,230px);min-width:0;min-height:40px;padding:5px 10px 5px 6px;border-color:var(--ln);border-radius:12px;background:var(--s1);box-shadow:inset 0 1px #ffffff08;transition:border-color .16s,background .16s}
+.top .bar .league-switcher{order:2;display:flex;flex:0 1 auto;align-items:center;gap:8px;width:auto;max-width:min(34vw,230px);min-width:0;min-height:38px;padding:5px 7px;border-color:transparent;border-radius:10px;background:transparent;box-shadow:none;transition:background .16s}
+.top .bar .sp{order:3}
 .top .bar .top-actions{order:4}
-.top .bar .league-switcher:hover{border-color:color-mix(in srgb,var(--ac) 48%,var(--ln));background:var(--s2);box-shadow:none}
+.top .bar .league-switcher:hover{border-color:transparent;background:color-mix(in srgb,var(--tx) 5%,transparent);box-shadow:none}
 .top .bar .league-switcher:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-.top .bar .league-switcher-label{display:grid;width:28px;height:28px;flex:none;place-items:center;border-radius:9px;background:color-mix(in srgb,var(--ac) 12%,var(--s2));color:var(--ac);font-size:0;font-weight:900;letter-spacing:.5px;line-height:1}
-.top .bar .league-switcher-label:after{content:"LIGA";font-size:6px}
-.top .bar .league-switcher>b{flex:1;min-width:0;overflow:hidden;font-size:11px;line-height:1.2;text-overflow:ellipsis;white-space:nowrap}
-.top .bar .league-switcher>i{display:grid;width:17px;height:17px;flex:none;place-items:center;margin-left:2px;color:var(--mu);font-size:14px;font-style:normal;line-height:1;transition:color .16s,transform .16s}
-.top .bar .league-switcher:hover>i{color:var(--ac);transform:translateY(1px)}
+.top .bar .league-switcher-label{display:block;width:7px;height:7px;flex:none;overflow:hidden;border-radius:50%;background:var(--ac);color:transparent;font-size:0;line-height:0;box-shadow:0 0 0 3px color-mix(in srgb,var(--ac) 12%,transparent)}
+.top .bar .league-switcher>b{flex:0 1 auto;min-width:0;overflow:hidden;color:var(--tx);font-size:11px;font-weight:750;line-height:1.2;text-overflow:ellipsis;white-space:nowrap}
+.top .bar .league-switcher>i{display:grid;width:16px;height:16px;flex:none;place-items:center;margin-left:0;color:var(--mu);font-size:13px;font-style:normal;line-height:1;transition:color .16s}
+.top .bar .league-switcher:hover>i{color:var(--ac)}
 @media(max-width:640px){
-  .top .bar .league-switcher{grid-column:1/-1;grid-row:2;justify-self:end;gap:6px;width:auto;max-width:min(70vw,280px);min-height:38px;padding:4px 7px 4px 5px;border-radius:11px}
-  .top .bar .league-switcher-label{width:25px;height:25px;border-radius:8px}
+  .top .bar .league-switcher{gap:7px;max-width:34vw;min-height:38px;padding:5px 4px}
   .top .bar .league-switcher>b{font-size:10px}
-  .top .bar .league-switcher>i{width:14px;margin-left:0;font-size:12px}
+  .top .bar .league-switcher>i{width:13px;font-size:12px}
 }
 @media(max-width:390px){
-  .top .bar .league-switcher{max-width:36vw;min-height:36px;gap:5px;padding-right:5px}
-  .top .bar .league-switcher-label{width:23px;height:23px}
-  .top .bar .league-switcher-label:after{font-size:5px}
+  .top .bar .league-switcher{max-width:32vw;min-height:36px;gap:6px}
   .top .bar .league-switcher>b{font-size:9px}
 }
