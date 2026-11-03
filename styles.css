@@ -462,3 +462,20 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
 @media(prefers-reduced-motion:reduce){
   .mobile-nav-item{transition:none}
 }
+.top-actions{gap:3px;padding:4px;border:1px solid color-mix(in srgb,var(--ac2) 19%,var(--ln));border-radius:14px;background:color-mix(in srgb,var(--s1) 92%,transparent);box-shadow:inset 0 1px #ffffff08}
+.top .bar .top-actions>button{width:38px;height:38px;min-width:38px;min-height:38px!important;padding:0!important;border:1px solid transparent!important;border-radius:10px!important;background:transparent!important;box-shadow:none!important;transform:none;transition:background .18s,border-color .18s,color .18s}
+.top .bar .top-actions>.info-button,.top .bar .top-actions>.profile-button{color:var(--ac2)}
+.top .bar .top-actions>.theme-button{color:var(--ac2)!important}
+.top .bar .top-actions>.auth-logout{color:var(--bad)!important}
+.top .bar .top-actions>button:hover{border-color:color-mix(in srgb,var(--ac2) 20%,var(--ln))!important;background:color-mix(in srgb,var(--ac2) 9%,var(--s2))!important}
+.top .bar .top-actions>.auth-logout:hover{border-color:color-mix(in srgb,var(--bad) 32%,var(--ln))!important;background:color-mix(in srgb,var(--bad) 9%,var(--s2))!important}
+.top .bar .top-actions>button:focus-visible{outline:2px solid var(--ac2);outline-offset:1px}
+.top .bar .top-actions>.theme-button:after{right:5px;bottom:5px}
+@media(max-width:767px){
+  .top .bar .top-actions{gap:2px;padding:3px}
+  .top .bar .top-actions>button{width:42px;height:42px;min-width:42px;min-height:42px!important}
+}
+@media(max-width:390px){
+  .top .bar .top-actions{gap:1px;padding:2px}
+  .top .bar .top-actions>button{width:34px;height:34px;min-width:34px;min-height:34px!important}
+}
