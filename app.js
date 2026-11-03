@@ -23,6 +23,7 @@ const LEAGUE_SCORES = { leagueId: null, seasonStartYear: null, season: [], round
 const ROOM = { loading: false, loaded: false, busy: false, archiving: false, error: "", archiveError: "", isAdmin: false, debts: [], chronicles: [], hallSeasons: [], dinnerLeaders: [], channel: null, leagueId: null, updatedAt: 0 };
 const CHAT = { loading: false, sending: false, uploadingAvatar: false, error: "", messages: [], avatars: {}, avatarPaths: {}, channel: null, channelLeagueId: null, loadedLeagueId: null, subscribed: false, input: "" };
 const PROFILE = { loading: false, error: "" };
+const PREDICTION = { matchId: null, home: 0, away: 0, joker: false, returnFocus: null, error: "", saving: false, transitionId: null, previousJoker: null };
 const LEAGUES = {
   items: [], loading: false, busy: false, error: "", warning: "",
   createName: "", leagueName: "", joinName: "", inviteCode: ""
@@ -80,7 +81,7 @@ function closeInstructions() {
   });
 }
 function syncInstructionsModal() {
-  const modal = document.querySelector(".instructions-overlay, .profile-overlay, .league-picker-overlay");
+  const modal = document.querySelector(".instructions-overlay, .profile-overlay, .league-picker-overlay, .prediction-overlay");
   document.body.classList.toggle("instructions-visible", Boolean(modal));
   if (modal && V.leaguePickerOpen && (V.leaguePickerNeedsFocus || !modal.contains(document.activeElement))) {
     V.leaguePickerNeedsFocus = false;
@@ -94,6 +95,27 @@ function syncInstructionsModal() {
   }
 }
 function handleInstructionsKeydown(event) {
+  const predictionDialog = document.querySelector(".prediction-sheet");
+  if (predictionDialog) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePredictionSheet();
+      return;
+    }
+    if (event.key === "Tab") {
+      const focusable = [...predictionDialog.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')];
+      if (!focusable.length) return;
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
+  }
   if (event.key === "Escape" && V.mobileMoreOpen && !V.instructionsOpen && !V.profileOpen && !V.leaguePickerOpen) {
     V.mobileMoreOpen = false;
     render();
@@ -371,28 +393,54 @@ async function shareLeague() {
   try { await navigator.share({ title: "Mi liga PLENO", text }); }
   catch (e) { if (e.name !== "AbortError") toast(`No se pudo compartir: ${e.message}`); }
 }
-function stp(id, s, d) { const el = $("#" + s + id); el.value = Math.min(20, Math.max(0, (parseInt(el.value) || 0) + d)); }
+function stp(id, s, d) {
+  const sheet = PREDICTION.matchId === id && document.querySelector(".prediction-sheet");
+  if (sheet) {
+    PREDICTION[s === "h" ? "home" : "away"] = Math.min(20, Math.max(0, (PREDICTION[s === "h" ? "home" : "away"] || 0) + d));
+    updatePredictionSheetScores(s);
+    return;
+  }
+  const el = $("#" + s + id);
+  if (el) el.value = Math.min(20, Math.max(0, (parseInt(el.value) || 0) + d));
+}
 function useS(id, h, a) { $("#h" + id).value = h; $("#a" + id).value = a; }
-function sv(id) {
+function sv(id, fromSheet = false) {
   const m = D.matches.find((x) => x.id === id);
   if (!m || !open(m)) return toast("Los pronósticos se cierran una hora antes del partido.");
   const previous = S.preds[id] ? { ...S.preds[id] } : null;
-  const next = { h: Math.min(20, parseInt($("#h" + id).value) || 0), a: Math.min(20, parseInt($("#a" + id).value) || 0) };
+  const previousJoker = fromSheet ? { ...(PREDICTION.previousJoker || S.joker) } : null;
+  const next = fromSheet
+    ? { h: PREDICTION.home, a: PREDICTION.away }
+    : { h: Math.min(20, parseInt($("#h" + id).value) || 0), a: Math.min(20, parseInt($("#a" + id).value) || 0) };
   S.preds[id] = next;
-  save(); render();
+  save();
+  if (!fromSheet) render();
   persistPrediction(id)
-    .then(() => toast(`Pronóstico sincronizado: ${nm(m.homeTeam)} ${next.h}–${next.a} ${nm(m.awayTeam)}`))
+    .then(() => {
+      toast(`Pronóstico sincronizado: ${nm(m.homeTeam)} ${next.h}–${next.a} ${nm(m.awayTeam)}`);
+      if (fromSheet) {
+        PREDICTION.saving = false;
+        PREDICTION.previousJoker = null;
+        predictionSheetSaved();
+      }
+    })
     .catch((e) => {
       FAILED_PREDS.delete(String(id));
       if (S.preds[id]?.h === next.h && S.preds[id]?.a === next.a) {
         if (previous) S.preds[id] = previous;
         else delete S.preds[id];
+        if (fromSheet) S.joker = previousJoker;
         save();
-        render();
+        if (!fromSheet) render();
       }
       const message = /one hour before kickoff|predictions close/i.test(e.message)
         ? "El plazo de edición ya terminó: los pronósticos se cierran una hora antes."
         : `No se pudo sincronizar el pronóstico: ${e.message}`;
+      if (fromSheet) {
+        PREDICTION.saving = false;
+        PREDICTION.error = message;
+        updatePredictionSheetStatus();
+      }
       toast(message);
     });
 }
@@ -1881,6 +1929,255 @@ function sugg(m) {
   const P = (x) => Math.round(x * 100);
   return `<div class="sg"><span>Sugerencia PLENO: <b>${s.h}–${s.a}</b></span><div class="pb" title="Local / Empate / Visitante"><i style="width:${P(s.w)}%">${P(s.w)}</i><u style="width:${P(s.d)}%">${P(s.d)}</u><s style="width:${P(s.l)}%">${P(s.l)}</s></div><button class="jk" onclick="useS(${m.id},${s.h},${s.a})">Usar</button></div>`;
 }
+function recentTeamForm(teamId) {
+  const finished = D.matches
+    .filter((match) => fin(match) && (match.homeTeam.id === teamId || match.awayTeam.id === teamId))
+    .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))
+    .slice(-5);
+  if (!finished.length) return '<span class="prediction-form-empty">Sin resultados recientes</span>';
+  return finished.map((match) => {
+    const result = res(match);
+    const home = match.homeTeam.id === teamId;
+    const difference = home ? result.h - result.a : result.a - result.h;
+    const outcome = difference > 0 ? "W" : difference < 0 ? "L" : "D";
+    return `<i class="prediction-form-${outcome}" aria-label="${outcome === "W" ? "Victoria" : outcome === "D" ? "Empate" : "Derrota"}">${{ W: "G", D: "E", L: "P" }[outcome]}</i>`;
+  }).join("");
+}
+function predictionPhrase(home, away) {
+  if (home === away) return home === 0 ? "Un duelo cerrado: nadie consigue marcar." : "Empate en el marcador. Todo queda abierto.";
+  const difference = Math.abs(home - away);
+  if (difference >= 3) return home > away ? "Victoria contundente del equipo local." : "Victoria contundente del equipo visitante.";
+  if (difference === 1) return home > away ? "Victoria ajustada para el equipo local." : "Victoria ajustada para el equipo visitante.";
+  return home > away ? "El equipo local se impone con autoridad." : "El equipo visitante se impone con autoridad.";
+}
+function predictionProbabilities(match) {
+  const guess = predict(match.homeTeam.id, match.awayTeam.id, D.tH, D.tA);
+  if (!guess) return "";
+  const home = Math.round(guess.w * 100), draw = Math.min(100 - home, Math.round(guess.d * 100)), away = 100 - home - draw;
+  return `<div class="prediction-probability" aria-label="Probabilidades estimadas: local ${home} por ciento, empate ${draw} por ciento, visitante ${away} por ciento"><div class="prediction-probability-labels"><span>LOCAL <b>${home}%</b></span><span>EMPATE <b>${draw}%</b></span><span>VISITANTE <b>${away}%</b></span></div><div class="prediction-probability-bar"><i style="--probability:${home}%"></i><b style="--probability:${draw}%"></b><em style="--probability:${away}%"></em></div></div>`;
+}
+function predictionSheetMarkup(match) {
+  const matchId = match.id, editable = open(match), finished = fin(match), isLive = live(match);
+  const prediction = S.preds[matchId];
+  const currentScore = res(match);
+  const home = editable ? PREDICTION.home : (isLive || finished) ? currentScore.h : prediction?.h ?? null;
+  const away = editable ? PREDICTION.away : (isLive || finished) ? currentScore.a : prediction?.a ?? null;
+  const joker = editable ? PREDICTION.joker : Boolean(S.joker[match.matchday] === matchId || S.joker[matchId] === true);
+  const statusLabel = isLive ? "EN DIRECTO" : finished ? "FINALIZADO" : editable ? `JORNADA ${match.matchday}` : "PRONÓSTICO CERRADO";
+  const outcome = finished && prediction ? pts(prediction, currentScore, joker) : null;
+  const friends = (isLive || finished) ? Object.values(S.friends)
+    .filter((friend) => friend.p[matchId])
+    .map((friend) => `<div class="prediction-friend"><span>${esc(friend.n)}</span><b>${friend.p[matchId][0]}–${friend.p[matchId][1]}</b></div>`).join("") : "";
+  const suggestionGuess = editable ? predict(match.homeTeam.id, match.awayTeam.id, D.tH, D.tA) : null;
+  const suggestion = suggestionGuess ? predictionProbabilities(match) : "";
+  const scoreControls = editable
+    ? `<div class="prediction-scoreboard" aria-label="Elige el resultado"><div class="prediction-team-score"><button class="prediction-score-step" type="button" onclick="stp(${matchId},'h',1)" aria-label="Sumar un gol al ${esc(clubName(match.homeTeam))}">+</button><output class="prediction-score-value" id="prediction-home-score" aria-live="polite">${home}</output><button class="prediction-score-step" type="button" onclick="stp(${matchId},'h',-1)" aria-label="Restar un gol al ${esc(clubName(match.homeTeam))}">−</button></div><span class="prediction-score-separator">:</span><div class="prediction-team-score"><button class="prediction-score-step" type="button" onclick="stp(${matchId},'a',1)" aria-label="Sumar un gol al ${esc(clubName(match.awayTeam))}">+</button><output class="prediction-score-value" id="prediction-away-score" aria-live="polite">${away}</output><button class="prediction-score-step" type="button" onclick="stp(${matchId},'a',-1)" aria-label="Restar un gol al ${esc(clubName(match.awayTeam))}">−</button></div></div>`
+    : `<div class="prediction-scoreboard prediction-scoreboard-readonly" aria-label="${isLive ? "Resultado actual" : finished ? "Resultado final" : "Pronóstico guardado"}"><div class="prediction-team-score"><span class="prediction-score-value">${home ?? "—"}</span></div><span class="prediction-score-separator">:</span><div class="prediction-team-score"><span class="prediction-score-value">${away ?? "—"}</span></div></div>`;
+  const predictionNote = !editable
+    ? `<div class="prediction-result-note"><span>${finished ? "RESULTADO FINAL" : isLive ? "MARCADOR EN DIRECTO" : "TU PRONÓSTICO"}</span><b>${prediction ? `Tu porra: ${prediction.h}–${prediction.a}` : isLive || finished ? "No guardaste pronóstico" : "Ya no se puede editar"}</b>${outcome != null ? `<strong data-points-target="${outcome}" aria-live="polite">+0 puntos</strong>` : isLive ? '<small>Los puntos se calculan cuando termine el partido.</small>' : ""}</div>`
+    : "";
+  return `<div class="prediction-overlay" data-prediction-overlay onclick="if(event.target===this)closePredictionSheet()"><section class="prediction-sheet" role="dialog" aria-modal="true" aria-labelledby="prediction-sheet-title" tabindex="-1" style="view-transition-name:pleno-match-${matchId}" data-match-id="${matchId}"><header class="prediction-sheet-header" onpointerdown="startPredictionSwipe(event)" onpointerup="endPredictionSwipe(event)"><span class="prediction-sheet-grabber" aria-hidden="true"></span><div class="prediction-sheet-topline"><span class="prediction-sheet-status ${isLive ? "is-live" : ""}">${statusLabel}</span><span class="prediction-sheet-date">${esc(fmtD(match.utcDate))}</span><button class="prediction-sheet-close" type="button" onclick="closePredictionSheet()" aria-label="Cerrar hoja de pronóstico">×</button></div><h2 id="prediction-sheet-title">${esc(clubName(match.homeTeam))} <i>contra</i> ${esc(clubName(match.awayTeam))}</h2></header><div class="prediction-sheet-body"><div class="prediction-teams"><div class="prediction-team"><div class="prediction-crest">${crest(match.homeTeam, "l")}</div><b>${esc(clubName(match.homeTeam))}</b><span>LOCAL</span><div class="prediction-form" aria-label="Últimos cinco partidos">${recentTeamForm(match.homeTeam.id)}</div></div><div class="prediction-vs">VS</div><div class="prediction-team"><div class="prediction-crest">${crest(match.awayTeam, "l")}</div><b>${esc(clubName(match.awayTeam))}</b><span>VISITANTE</span><div class="prediction-form" aria-label="Últimos cinco partidos">${recentTeamForm(match.awayTeam.id)}</div></div></div>${scoreControls}<p class="prediction-reactive-phrase" id="prediction-reactive-phrase">${editable ? esc(predictionPhrase(home, away)) : finished ? "El partido ya tiene resultado oficial." : isLive ? "El marcador se actualizará al finalizar el partido." : "El plazo de pronóstico ha terminado."}</p>${suggestion ? `<div class="prediction-suggestion"><div><span>SUGERENCIA PLENO</span><b>${suggestionGuess.h}–${suggestionGuess.a}</b></div>${suggestion}<button class="prediction-use-suggestion" type="button" onclick="applyPredictionSuggestion(${matchId})">Usar sugerencia</button></div>` : ""}${editable ? `<button class="prediction-joker ${joker ? "is-active" : ""}" type="button" onclick="togglePredictionSheetJoker()" aria-pressed="${joker}"><span class="prediction-joker-star" aria-hidden="true">★</span><span><b>Joker x2</b><small>Duplica los puntos de este partido</small></span><i>${joker ? "ACTIVADO" : "ACTIVAR"}</i><span class="prediction-joker-particles" aria-hidden="true">${Array.from({ length: 8 }, (_, index) => `<i style="--particle:${index}"></i>`).join("")}</span></button>` : ""}${predictionNote}${friends ? `<section class="prediction-friends"><h3>Pronósticos de tu liga</h3>${friends}</section>` : ""}<p class="prediction-sheet-error" id="prediction-sheet-error" role="alert" ${PREDICTION.error ? "" : "hidden"}>${esc(PREDICTION.error)}</p></div><footer class="prediction-sheet-footer">${editable ? `<button class="prediction-save ${PREDICTION.saving ? "is-saving" : ""}" type="button" onclick="savePredictionSheet()" ${PREDICTION.saving ? "disabled" : ""}><span class="prediction-save-label">${PREDICTION.saving ? "Guardando…" : prediction ? "Actualizar pronóstico" : "Guardar pronóstico"}</span><span class="prediction-save-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span><span class="prediction-confetti" aria-hidden="true">${Array.from({ length: 10 }, (_, index) => `<i style="--confetti:${index}"></i>`).join("")}</span></button>` : '<span class="prediction-readonly-label">HOJA DE PRONÓSTICO · SOLO LECTURA</span>'}</footer></section></div>`;
+}
+function openPredictionSheet(matchId, trigger) {
+  const match = D.matches.find((item) => item.id === matchId);
+  if (!match || PREDICTION.matchId != null) return;
+  PREDICTION.matchId = matchId;
+  PREDICTION.home = S.preds[matchId]?.h ?? 0;
+  PREDICTION.away = S.preds[matchId]?.a ?? 0;
+  PREDICTION.joker = Boolean(S.joker[match.matchday] === matchId || S.joker[matchId] === true);
+  PREDICTION.returnFocus = trigger || document.activeElement;
+  PREDICTION.error = "";
+  PREDICTION.saving = false;
+  const card = document.querySelector(`.mc[data-match-id="${matchId}"]`);
+  const name = `pleno-match-${matchId}`;
+  const useTransition = document.startViewTransition && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (card && useTransition) card.style.viewTransitionName = name;
+  const show = () => {
+    if (card) card.style.viewTransitionName = "none";
+    document.body.insertAdjacentHTML("beforeend", predictionSheetMarkup(match));
+    document.body.classList.add("instructions-visible");
+    const sheet = document.querySelector(".prediction-sheet");
+    sheet?.querySelector(".prediction-sheet-close")?.focus({ preventScroll: true });
+    animatePredictionPoints();
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      document.querySelector(".prediction-overlay")?.classList.add("is-visible");
+    } else requestAnimationFrame(() => document.querySelector(".prediction-overlay")?.classList.add("is-visible"));
+  };
+  if (useTransition) {
+    const transition = document.startViewTransition(show);
+    transition.finished.then(() => {
+      if (card?.isConnected) card.style.removeProperty("view-transition-name");
+    }, () => {
+      if (card?.isConnected) card.style.removeProperty("view-transition-name");
+    });
+  } else show();
+}
+function animatePredictionPoints() {
+  const counter = document.querySelector("[data-points-target]");
+  const target = Number(counter?.dataset.pointsTarget);
+  if (!counter || !Number.isFinite(target)) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    counter.textContent = `+${target} puntos`;
+    return;
+  }
+  const start = performance.now(), duration = 700;
+  const tick = (now) => {
+    if (!counter.isConnected) return;
+    const progress = Math.min(1, (now - start) / duration);
+    const eased = 1 - (1 - progress) ** 3;
+    counter.textContent = `+${Math.round(target * eased)} puntos`;
+    if (progress < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+function closePredictionSheet(refresh = false) {
+  const overlay = document.querySelector(".prediction-overlay");
+  if (!overlay || PREDICTION.saving) return;
+  const matchId = PREDICTION.matchId;
+  const sheet = overlay.querySelector(".prediction-sheet");
+  const cardName = `pleno-match-${matchId}`;
+  const useTransition = sheet && document.startViewTransition && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const restoreFocus = PREDICTION.returnFocus;
+  let closed = false;
+  const finishClose = () => {
+    if (closed) return;
+    closed = true;
+    overlay.remove();
+    document.body.classList.remove("instructions-visible");
+    PREDICTION.matchId = null;
+    PREDICTION.returnFocus = null;
+    PREDICTION.error = "";
+    PREDICTION.previousJoker = null;
+    if (refresh) render();
+    requestAnimationFrame(() => {
+      const target = restoreFocus?.isConnected
+        ? restoreFocus
+        : document.querySelector(`.mc[data-match-id="${matchId}"] .match-sheet-trigger`);
+      target?.focus({ preventScroll: true });
+    });
+  };
+  if (useTransition) {
+    const transition = document.startViewTransition(() => {
+      overlay.remove();
+      PREDICTION.transitionId = matchId;
+      if (refresh) render();
+      PREDICTION.transitionId = null;
+      const target = document.querySelector(`.mc[data-match-id="${matchId}"]`);
+      if (target) target.style.viewTransitionName = cardName;
+      document.body.classList.remove("instructions-visible");
+    });
+    transition.finished.then(() => {
+      const target = document.querySelector(`.mc[data-match-id="${matchId}"]`);
+      if (target) target.style.removeProperty("view-transition-name");
+      PREDICTION.matchId = null;
+      PREDICTION.returnFocus = null;
+      const focusTarget = restoreFocus?.isConnected
+        ? restoreFocus
+        : document.querySelector(`.mc[data-match-id="${matchId}"] .match-sheet-trigger`);
+      focusTarget?.focus({ preventScroll: true });
+    }, finishClose);
+    return;
+  }
+  overlay.classList.remove("is-visible");
+  overlay.classList.add("is-closing");
+  overlay.addEventListener("animationend", (event) => {
+    if (event.target === overlay) finishClose();
+  }, { once: true });
+  setTimeout(finishClose, 200);
+}
+let predictionSwipeStart = null;
+function startPredictionSwipe(event) {
+  if (event.pointerType === "mouse" || event.target.closest("button")) return;
+  predictionSwipeStart = { x: event.clientX, y: event.clientY };
+}
+function endPredictionSwipe(event) {
+  if (!predictionSwipeStart) return;
+  const deltaY = event.clientY - predictionSwipeStart.y;
+  const deltaX = Math.abs(event.clientX - predictionSwipeStart.x);
+  predictionSwipeStart = null;
+  if (deltaY > 80 && deltaY > deltaX * 1.4) closePredictionSheet();
+}
+function updatePredictionSheetScores(changed) {
+  const home = document.querySelector("#prediction-home-score");
+  const away = document.querySelector("#prediction-away-score");
+  for (const [node, value, side] of [[home, PREDICTION.home, "h"], [away, PREDICTION.away, "a"]]) {
+    if (!node) continue;
+    if (node.textContent !== String(value)) {
+      node.textContent = String(value);
+      node.classList.remove("is-changing", "from-home", "from-away");
+      void node.offsetWidth;
+      node.classList.add("is-changing", side === changed ? "from-home" : "from-away");
+    }
+  }
+  const phrase = document.querySelector("#prediction-reactive-phrase");
+  if (phrase) {
+    phrase.classList.add("is-changing");
+    phrase.textContent = predictionPhrase(PREDICTION.home, PREDICTION.away);
+    requestAnimationFrame(() => phrase.classList.remove("is-changing"));
+  }
+}
+function applyPredictionSuggestion(matchId) {
+  const match = D.matches.find((item) => item.id === matchId);
+  if (!match || !open(match)) return;
+  const suggestion = predict(match.homeTeam.id, match.awayTeam.id, D.tH, D.tA);
+  if (!suggestion) return toast("Aún no hay datos suficientes para sugerir un marcador.");
+  PREDICTION.home = suggestion.h;
+  PREDICTION.away = suggestion.a;
+  updatePredictionSheetScores("h");
+}
+function togglePredictionSheetJoker() {
+  if (PREDICTION.matchId == null || PREDICTION.saving) return;
+  PREDICTION.joker = !PREDICTION.joker;
+  const button = document.querySelector(".prediction-joker");
+  if (!button) return;
+  button.classList.toggle("is-active", PREDICTION.joker);
+  button.setAttribute("aria-pressed", String(PREDICTION.joker));
+  const state = button.querySelector(".prediction-joker>i");
+  if (state) state.textContent = PREDICTION.joker ? "ACTIVADO" : "ACTIVAR";
+  if (PREDICTION.joker) {
+    button.classList.remove("is-bursting");
+    void button.offsetWidth;
+    button.classList.add("is-bursting");
+  }
+}
+function updatePredictionSheetStatus() {
+  const error = document.querySelector("#prediction-sheet-error");
+  if (error) {
+    error.textContent = PREDICTION.error;
+    error.hidden = !PREDICTION.error;
+  }
+  const saveButton = document.querySelector(".prediction-save");
+  if (saveButton) {
+    saveButton.disabled = PREDICTION.saving;
+    saveButton.classList.toggle("is-saving", PREDICTION.saving);
+    const label = saveButton.querySelector(".prediction-save-label");
+    if (label) label.textContent = PREDICTION.saving ? "Guardando…" : "Guardar pronóstico";
+  }
+}
+function savePredictionSheet() {
+  const match = D.matches.find((item) => item.id === PREDICTION.matchId);
+  if (!match || PREDICTION.saving || !open(match)) return;
+  PREDICTION.error = "";
+  PREDICTION.saving = true;
+  PREDICTION.previousJoker = { ...S.joker };
+  const selected = PREDICTION.joker;
+  if (selected) S.joker[match.matchday] = match.id;
+  else if (S.joker[match.matchday] === match.id || S.joker[match.id] === true) S.joker[match.matchday] = null;
+  delete S.joker[match.id];
+  updatePredictionSheetStatus();
+  sv(match.id, true);
+}
+function predictionSheetSaved() {
+  if (PREDICTION.matchId == null) return;
+  const button = document.querySelector(".prediction-save");
+  if (!button) return;
+  button.classList.remove("is-saving");
+  button.classList.add("is-saved");
+  const label = button.querySelector(".prediction-save-label");
+  if (label) label.textContent = "Pronóstico guardado";
+  if (navigator.vibrate) navigator.vibrate(18);
+  setTimeout(() => closePredictionSheet(true), 520);
+}
 function mc(m) {
   const id = m.id, p = S.preds[id], jk = S.joker[m.matchday] === id || S.joker[id] === true, o = open(m), lock = predictionLocked(m), f = fin(m), l = live(m), r = res(m);
   const mid = f || l ? `<div class="big">${r.h}<i>–</i>${r.a}</div>` : `<div class="big mu">vs</div>`;
@@ -1891,7 +2188,8 @@ function mc(m) {
     const fr = Object.values(S.friends).filter((x) => x.p[id]).map((x) => `<span class="chip">${esc(x.n)} ${x.p[id][0]}–${x.p[id][1]}</span>`).join("");
     foot = `<div class="pred done"><span>${p ? `Tu porra: <b>${p.h}–${p.a}</b>${jk ? " ★" : ""}` : '<span class="mu">Sin porra</span>'}</span>${g != null ? `<span class="pts p${g ? 1 : 0}">+${g} pts</span>` : ""}</div>${lock ? `<p class="prediction-lock-note">Pronósticos cerrados: se bloquean una hora antes del inicio (${fmtD(m.utcDate)}).</p>` : ""}${fr ? `<div class="chips">${fr}</div>` : ""}`;
   }
-  return `<article class="mc ${l ? "isl" : ""} ${f ? "finished" : ""} ${o ? "predictable" : ""}"><div class="mh"><span>${status(m)}</span><span>JORNADA ${m.matchday}</span></div><div class="row"><div class="tm" onclick="openTeam(${m.homeTeam.id})">${crest(m.homeTeam)}<b>${nm(m.homeTeam)}</b></div>${mid}<div class="tm" onclick="openTeam(${m.awayTeam.id})">${crest(m.awayTeam)}<b>${nm(m.awayTeam)}</b></div></div>${foot}</article>`;
+  const transitionName = PREDICTION.transitionId === id ? `style="view-transition-name:pleno-match-${id}"` : "";
+  return `<article class="mc ${l ? "isl" : ""} ${f ? "finished" : ""} ${o ? "predictable" : ""}" data-match-id="${id}" ${transitionName}><div class="mh"><span>${status(m)}</span><span>JORNADA ${m.matchday}</span></div><div class="row"><div class="tm" onclick="openTeam(${m.homeTeam.id})">${crest(m.homeTeam)}<b>${nm(m.homeTeam)}</b></div>${mid}<div class="tm" onclick="openTeam(${m.awayTeam.id})">${crest(m.awayTeam)}<b>${nm(m.awayTeam)}</b></div></div>${foot}<button class="match-sheet-trigger" type="button" onclick="openPredictionSheet(${id},this)">${o ? (p ? "Editar pronóstico" : "Hacer pronóstico") : "Ver partido y pronósticos"}<span aria-hidden="true">↗</span></button></article>`;
 }
 const trow = (r, i) => { const gd = Number.isFinite(r.goalDifference) ? r.goalDifference : null; return `<tr><td>${i + 1}</td><td><div class="tc" onclick="openTeam(${r.team.id})">${crest(r.team, "s")}${nm(r.team)}</div></td><td>${r.playedGames}</td><td>${r.won}</td><td>${r.draw}</td><td>${r.lost}</td><td>${gd == null ? "–" : `${gd > 0 ? "+" : ""}${gd}`}</td><td><b>${r.points}</b></td></tr>`; };
 
