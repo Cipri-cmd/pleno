@@ -19,6 +19,7 @@ const save = () => { try { localStorage.setItem("pleno", JSON.stringify(S)); } c
 const V = { tab: "i", team: null, sub: "res", md: null, challengeMd: null, leagueSection: "ranking", instructionsOpen: false, instructionsNeedsFocus: false, profileOpen: false, profileNeedsFocus: false, leaguePickerOpen: false, leaguePickerNeedsFocus: false, mobileMoreOpen: false, tbl: "all", q: "", tabDirection: 1 };
 const D = { ready: false, err: null, matches: [], table: [], tH: [], tA: [], teams: [], by: {}, scorers: [], cur: 1, seasonStartYear: 0, tc: {}, polling: false, lastMatchesUpdate: 0, lastStandingsUpdate: 0, lastTeamsUpdate: 0, lastScorersUpdate: 0, lastStandingsPoll: 0, lastTeamsPoll: 0, lastScorersPoll: 0, matchesTimestampEstimated: false, standingsTimestampEstimated: false, teamsTimestampEstimated: false, scorersTimestampEstimated: false, matchesStale: false, standingsStale: false, teamsStale: false, scorersStale: false, matchesError: "", standingsError: "", teamsError: "", scorersError: "", minigames: { round_bonuses: [], minute_bonuses: [], red_cards: [] } };
 const AUTH = { client: null, session: null, ready: false, busy: false, googleBusy: false, syncing: false, minigameSyncing: false, mode: "login", email: "", password: "", error: "" };
+const LEAGUE_SCORES = { leagueId: null, seasonStartYear: null, season: [], rounds: {}, loading: false, error: "" };
 const ROOM = { loading: false, loaded: false, busy: false, archiving: false, error: "", archiveError: "", isAdmin: false, debts: [], chronicles: [], hallSeasons: [], dinnerLeaders: [], channel: null, leagueId: null, updatedAt: 0 };
 const CHAT = { loading: false, sending: false, uploadingAvatar: false, error: "", messages: [], avatars: {}, avatarPaths: {}, channel: null, channelLeagueId: null, loadedLeagueId: null, subscribed: false, input: "" };
 const PROFILE = { loading: false, error: "" };
@@ -317,48 +318,34 @@ function retryTeam(id) {
 
 /* ---------- puntos y liga entre amigos ---------- */
 const mine = () => ({ id: AUTH.session?.user?.id || "me", n: S.me || "Tú", p: Object.fromEntries(Object.entries(S.preds).map(([k, v]) => [k, [v.h, v.a]])), j: S.joker });
-const redCarded = (userId, matchId) => D.minigames.red_cards.some((card) => card.target_user_id === userId && String(card.match_id) === String(matchId));
-const minuteBonus = (userId, matchId) => D.minigames.minute_bonuses
-  .filter((bonus) => bonus.user_id === userId && String(bonus.match_id) === String(matchId))
-  .reduce((sum, bonus) => sum + Number(bonus.points || 0), 0);
-const roundBonus = (userId, matchday) => D.minigames.round_bonuses
-  .filter((bonus) => bonus.user_id === userId && Number(bonus.matchday) === Number(matchday))
-  .reduce((sum, bonus) => sum + Number(bonus.points || 0), 0);
 function total(pl) {
-  const r = { pts: 0, ex: 0, ok: 0, sg: 0 };
-  D.matches.filter(fin).forEach((m) => {
-    const p = pl.p[m.id];
-    if (!p) { r.pts += minuteBonus(pl.id, m.id); return; }
-    const joker = pl.j[m.matchday] === m.id || pl.j[m.id] === true;
-    const g = redCarded(pl.id, m.id) ? 0 : pts({ h: p[0], a: p[1] }, res(m), joker);
-    r.pts += g; const b = joker ? g / 2 : g; if (b === 10) r.ex++; else if (b === 7) r.ok++; else if (b === 3) r.sg++;
-    r.pts += minuteBonus(pl.id, m.id);
-  });
-  for (const matchday of new Set(D.matches.filter(fin).map((match) => match.matchday))) {
-    r.pts += roundBonus(pl.id, matchday);
-  }
-  return r;
+  const score = LEAGUE_SCORES.season.find((row) => row.user_id === pl.id);
+  return {
+    pts: Number(score?.points) || 0,
+    ex: Number(score?.exact_scores) || 0,
+    ok: Number(score?.seven_points) || 0,
+    sg: Number(score?.three_points) || 0
+  };
 }
-const board = () => [{ ...mine(), me: 1 }, ...Object.entries(S.friends).map(([id, player]) => ({ ...player, id }))].map((pl) => ({ ...pl, ...total(pl) })).sort((a, b) => b.pts - a.pts || b.ex - a.ex);
+const board = () => (LEAGUE_SCORES.leagueId === S.league?.id ? LEAGUE_SCORES.season : []).map((score) => ({
+  id: score.user_id,
+  n: score.display_name,
+  me: score.is_me,
+  pts: Number(score.points) || 0,
+  ex: Number(score.exact_scores) || 0,
+  ok: Number(score.seven_points) || 0,
+  sg: Number(score.three_points) || 0
+}));
 function roundBoard(md) {
   const matches = D.matches.filter((m) => m.matchday === md), finished = matches.filter(fin);
-  const players = [{ ...mine(), me: true }, ...Object.entries(S.friends).map(([id, player]) => ({ ...player, me: false, id }))];
-  const rows = players.map((pl) => {
-    const score = { pts: 0, exact: 0, played: 0 };
-    for (const match of finished) {
-      const prediction = pl.p[match.id];
-      if (prediction) {
-        const joker = pl.j[md] === match.id || pl.j[match.id] === true;
-        const points = redCarded(pl.id, match.id) ? 0 : pts({ h: prediction[0], a: prediction[1] }, res(match), joker);
-        score.pts += points;
-        score.played++;
-        if (points === (joker ? 20 : 10)) score.exact++;
-      }
-      score.pts += minuteBonus(pl.id, match.id);
-    }
-    if (finished.length) score.pts += roundBonus(pl.id, md);
-    return { ...pl, ...score };
-  }).sort((a, b) => b.pts - a.pts || b.exact - a.exact || b.played - a.played);
+  const rows = (LEAGUE_SCORES.leagueId === S.league?.id ? LEAGUE_SCORES.rounds[String(md)] || [] : []).map((score) => ({
+    id: score.user_id,
+    n: score.display_name,
+    me: score.is_me,
+    pts: Number(score.points) || 0,
+    exact: Number(score.exact_scores) || 0,
+    played: Number(score.played) || 0
+  }));
   return { matches, finished, rows };
 }
 async function copyLeagueCode() {
@@ -426,8 +413,53 @@ function resetLeagueState() {
   if (CHAT.channel && AUTH.client) AUTH.client.removeChannel(CHAT.channel);
   Object.assign(CHAT, { loading: false, sending: false, uploadingAvatar: false, error: "", messages: [], avatars: {}, avatarPaths: {}, channel: null, channelLeagueId: null, loadedLeagueId: null, subscribed: false, input: "" });
   S = { league: null, me: "", preds: {}, joker: {}, friends: {}, th: S.th };
+  Object.assign(LEAGUE_SCORES, { leagueId: null, seasonStartYear: null, season: [], rounds: {}, loading: false, error: "" });
   D.minigames = { round_bonuses: [], minute_bonuses: [], red_cards: [] };
   save();
+}
+async function refreshLeagueScoreboards(leagueId = S.league?.id) {
+  if (!AUTH.client || !AUTH.session || !leagueId || LEAGUE_SCORES.loading) return false;
+  if (LEAGUE_SCORES.leagueId && LEAGUE_SCORES.leagueId !== leagueId) {
+    LEAGUE_SCORES.season = [];
+    LEAGUE_SCORES.rounds = {};
+    LEAGUE_SCORES.leagueId = null;
+  }
+  if (LEAGUE_SCORES.leagueId === leagueId &&
+      LEAGUE_SCORES.seasonStartYear === D.seasonStartYear &&
+      Date.now() - (LEAGUE_SCORES.updatedAt || 0) < 30000) return true;
+  LEAGUE_SCORES.loading = true;
+  LEAGUE_SCORES.error = "";
+  if (V.tab === "l") render();
+  const seasonStartYear = D.seasonStartYear || null;
+  try {
+    const { data, error } = await AUTH.client.rpc("get_league_scoreboards", {
+      p_league_id: leagueId,
+      p_season_start_year: seasonStartYear
+    });
+    if (error) throw error;
+    if (leagueId !== S.league?.id) return false;
+    if (!data || !Array.isArray(data.season) || !data.rounds ||
+        typeof data.rounds !== "object" || Array.isArray(data.rounds)) {
+      throw new Error("Supabase devolvió una clasificación con formato inválido.");
+    }
+    LEAGUE_SCORES.leagueId = leagueId;
+    LEAGUE_SCORES.seasonStartYear = seasonStartYear;
+    LEAGUE_SCORES.season = data.season;
+    LEAGUE_SCORES.rounds = data.rounds;
+    LEAGUE_SCORES.updatedAt = Date.now();
+    return true;
+  } catch (error) {
+    if (leagueId === S.league?.id) {
+      const message = errorText(error);
+      LEAGUE_SCORES.error = error?.code === "PGRST202" || error?.code === "42883"
+        ? `${message} · Ejecuta supabase-score-settlement.sql en Supabase.`
+        : message;
+    }
+    return false;
+  } finally {
+    LEAGUE_SCORES.loading = false;
+    if (V.tab === "l" && leagueId === S.league?.id) render();
+  }
 }
 async function syncLeagueData(leagueId, userId) {
   const { data: members, error: memberError } = await AUTH.client.from("league_members")
@@ -456,6 +488,7 @@ async function syncLeagueData(leagueId, userId) {
   S.joker = joker;
   S.friends = friends;
   save();
+  await refreshLeagueScoreboards(leagueId);
 }
 async function loadCloudLeague(preferredLeagueId = null) {
   const loadMemberships = (includeOwner) => AUTH.client.from("league_members")
@@ -1945,6 +1978,9 @@ function roomHallOfFame() {
 }
 function tLiga() {
   if (!ROOM.loaded && !ROOM.loading && !ROOM.error) queueMicrotask(() => loadRoomData());
+  if (S.league?.id && LEAGUE_SCORES.leagueId !== S.league.id && !LEAGUE_SCORES.loading) {
+    queueMicrotask(() => refreshLeagueScoreboards(S.league.id));
+  }
   const b = board(), rounds = [...new Set(D.matches.map((m) => m.matchday).filter(Number.isInteger))].sort((a, c) => a - c);
   const md = rounds.includes(V.challengeMd) ? V.challengeMd : rounds.includes(D.cur) ? D.cur : rounds[rounds.length - 1];
   const challenge = md ? roundBoard(md) : { matches: [], finished: [], rows: [] };
@@ -1963,13 +1999,18 @@ function tLiga() {
   const leader = challenge.rows[0], hasResults = challenge.finished.length > 0;
   const roundOptions = rounds.map((round) => `<option value="${round}" ${round === md ? "selected" : ""}>Jornada ${round}${round === D.cur ? " · actual" : ""}</option>`).join("");
   const roundRows = challenge.rows.map((player, index) => `<div class="round-player ${index === 0 && player.pts > 0 ? "round-winner" : ""}"><b class="round-place">${index === 0 && player.pts > 0 ? "★" : index + 1}</b><div class="round-player-info"><b>${esc(player.n)}${player.me ? ' <span class="league-you">(tú)</span>' : ""}</b><small>${player.played} de ${challenge.finished.length} partidos puntuados${player.exact ? ` · ${player.exact} pleno${player.exact === 1 ? "" : "s"}` : ""}</small></div><span class="round-crowns" title="${crowns.get(player.id) || 0} jornadas ganadas">♛ ${crowns.get(player.id) || 0}</span><b class="round-points">${player.pts}<small> pts</small></b></div>`).join("");
+  const scoreMessage = LEAGUE_SCORES.error
+    ? `<p class="room-error" role="alert">No se pudo cargar la clasificación oficial: ${esc(LEAGUE_SCORES.error)} <button class="room-action" type="button" onclick="refreshLeagueScoreboards(S.league.id)">Reintentar</button></p>`
+    : LEAGUE_SCORES.loading && LEAGUE_SCORES.leagueId !== S.league.id
+      ? '<p class="mu" role="status">Cargando la clasificación validada por el servidor…</p>'
+      : "";
   const crownRows = challenge.rows.map((player) => ({ ...player, crowns: crowns.get(player.id) || 0 })).filter((player) => player.crowns > 0).sort((a, c) => c.crowns - a.crowns || c.pts - a.pts).map((player, index) => `<div class="crown-player"><b>${index + 1}</b><span>${esc(player.n)}${player.me ? ' <small>(tú)</small>' : ""}</span><strong>♛ ${player.crowns}</strong></div>`).join("");
   const lowerSections = V.leagueSection === "hall" ? roomHallOfFame() : `${roomChat()}${roomFeatures()}`;
   return `<div class="league-head card"><div class="league-profile"><label class="league-avatar-picker" for="profile-avatar-input" title="Cambiar foto de perfil" aria-label="Cambiar foto de perfil">${chatAvatar(AUTH.session?.user?.id, S.me || "Tú", "league-avatar")}<span class="league-avatar-edit" aria-hidden="true">+</span><input id="profile-avatar-input" type="file" accept="image/*" onchange="uploadProfilePhoto(event)" ${CHAT.uploadingAvatar ? "disabled" : ""}></label><div class="league-profile-copy"><span class="league-kicker">MI LIGA</span><h1>${esc(S.league.name)}</h1><p class="mu">Jugando como <b>${esc(S.me)}</b> · <span>${CHAT.uploadingAvatar ? "Subiendo foto…" : "Cambiar foto"}</span></p></div></div><div class="league-code"><span>CÓDIGO DE LIGA</span><div class="league-code-row"><b>${esc(S.league.code)}</b><button class="league-copy-button" onclick="copyLeagueCode()" aria-label="Copiar código de la liga" title="Copiar código"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span>Copiar</span></button></div></div></div>
-  ${leagueSectionTabs()}<div class="league-main-view" ${V.leagueSection === "hall" ? "hidden" : ""}><section class="round-challenge"><div class="round-heading"><div><span class="round-kicker">COMPETICIÓN PARALELA</span><h2>Reto de la jornada</h2><p>Gana puntos en cada partido y suma coronas durante toda la temporada.</p></div><label class="round-select-label" for="challenge-round">Elegir jornada<select id="challenge-round" onchange="V.challengeMd=Number(this.value);render()" ${roundOptions ? "" : "disabled"}>${roundOptions || '<option>No hay jornadas</option>'}</select></label></div><div class="round-summary"><span><b>${challenge.finished.length}<i>/${challenge.matches.length}</i></b><small>partidos terminados</small></span><span><b>${challenge.rows.length}</b><small>jugadores en la carrera</small></span><span class="round-leader"><b>${hasResults && leader?.pts > 0 ? esc(leader.n) : "—"}</b><small>${hasResults ? leader?.pts > 0 ? "va ganando la jornada" : "sin puntos todavía" : "esperando los primeros resultados"}</small></span></div><div class="round-ranking">${roundRows || '<p class="mu">Todavía no hay participantes en esta liga.</p>'}</div>${!hasResults ? '<p class="round-note">Los puntos de la jornada aparecerán aquí cuando terminen los partidos.</p>' : ""}</section><section class="round-hall"><div class="round-hall-heading"><div><span class="round-kicker">PALMARÉS DE TEMPORADA</span><h2>Campeones de jornada</h2></div><span class="round-hall-note">Gana una corona al ser el mejor de una jornada completa</span></div><div class="crown-list">${crownRows || '<p class="mu">Aún no hay jornadas completas con puntos. La primera corona está en juego.</p>'}</div></section>
+  ${leagueSectionTabs()}<div class="league-main-view" ${V.leagueSection === "hall" ? "hidden" : ""}>${scoreMessage}<section class="round-challenge"><div class="round-heading"><div><span class="round-kicker">COMPETICIÓN PARALELA</span><h2>Reto de la jornada</h2><p>Gana puntos en cada partido y suma coronas durante toda la temporada.</p></div><label class="round-select-label" for="challenge-round">Elegir jornada<select id="challenge-round" onchange="V.challengeMd=Number(this.value);render()" ${roundOptions ? "" : "disabled"}>${roundOptions || '<option>No hay jornadas</option>'}</select></label></div><div class="round-summary"><span><b>${challenge.finished.length}<i>/${challenge.matches.length}</i></b><small>partidos terminados</small></span><span><b>${challenge.rows.length}</b><small>jugadores en la carrera</small></span><span class="round-leader"><b>${hasResults && leader?.pts > 0 ? esc(leader.n) : "—"}</b><small>${hasResults ? leader?.pts > 0 ? "va ganando la jornada" : "sin puntos todavía" : "esperando los primeros resultados"}</small></span></div><div class="round-ranking">${roundRows || (scoreMessage ? "" : '<p class="mu">Todavía no hay participantes en esta liga.</p>')}</div>${!hasResults ? '<p class="round-note">Los puntos de la jornada aparecerán aquí cuando terminen los partidos.</p>' : ""}</section><section class="round-hall"><div class="round-hall-heading"><div><span class="round-kicker">PALMARÉS DE TEMPORADA</span><h2>Campeones de jornada</h2></div><span class="round-hall-note">Gana una corona al ser el mejor de una jornada completa</span></div><div class="crown-list">${crownRows || '<p class="mu">Aún no hay jornadas completas con puntos. La primera corona está en juego.</p>'}</div></section>
   <div class="league-layout">
     <section class="league-board"><div class="league-section-head"><div><h2>Clasificación</h2><p class="mu">Así vais esta temporada</p></div><span class="league-count">${b.length} ${b.length === 1 ? "participante" : "participantes"}</span></div>
-      <div class="card league-rank">${b.map((x, i) => `<div class="pl"><b class="league-place ${i === 0 ? "first" : ""}">${i + 1}</b><div class="league-player"><div class="n">${esc(x.n)}${x.me ? ' <span class="league-you">(tú)</span>' : ""}</div><small class="mu">${x.ex} plenos · ${x.ok} dif. · ${x.sg} signos</small></div><div class="r"><b>${x.pts} <small>pts</small></b></div></div>`).join("")}</div>
+      <div class="card league-rank">${b.map((x, i) => `<div class="pl"><b class="league-place ${i === 0 ? "first" : ""}">${i + 1}</b><div class="league-player"><div class="n">${esc(x.n)}${x.me ? ' <span class="league-you">(tú)</span>' : ""}</div><small class="mu">${x.ex} plenos · ${x.ok} dif. · ${x.sg} signos</small></div><div class="r"><b>${x.pts} <small>pts</small></b></div></div>`).join("") || (scoreMessage ? "" : '<p class="mu">Todavía no hay participantes en esta liga.</p>')}</div>
     </section>
     <aside class="league-side"><section class="card invite-card"><h2>Invita a tus amigos</h2><p class="mu">Comparte el código de esta liga. Al unirse, aparecerán aquí y sus pronósticos se sincronizarán automáticamente.</p>
       <div class="invite-code league-invite-code" aria-label="Código de invitación">${esc(S.league.code)}</div><div class="invite-actions"><button class="btn ghost" onclick="shareLeague()">Compartir liga</button></div>

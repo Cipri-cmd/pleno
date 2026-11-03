@@ -32,7 +32,10 @@ async function syncMatchSchedule(matches) {
   const rows = matches.map((match) => ({
     match_id: match.id,
     kickoff: match.utcDate,
-    matchday: match.matchday ?? null
+    matchday: match.matchday ?? null,
+    status: match.status,
+    home_goals: Number.isInteger(match.score?.fullTime?.home) ? match.score.fullTime.home : null,
+    away_goals: Number.isInteger(match.score?.fullTime?.away) ? match.score.fullTime.away : null
   }));
   const response = await fetch(`${SUPABASE_URL}/rest/v1/league_matches?on_conflict=match_id`, {
     method: "POST",
@@ -99,7 +102,8 @@ http.createServer(async (req, res) => {
             if (ep === "competitions/PD/matches") {
               try {
                 const matches = JSON.parse(b).matches || [];
-                await Promise.all([syncMatchSchedule(matches), syncMinuteOfGoldResults(matches)]);
+                await syncMatchSchedule(matches);
+                await syncMinuteOfGoldResults(matches);
               }
               catch (e) { console.error(`Error al sincronizar el calendario con Supabase: ${e.message}`); }
             }
