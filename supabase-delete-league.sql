@@ -47,7 +47,19 @@ begin
       new.owner_id := (select auth.uid());
     end if;
   else
-    new.owner_id := old.owner_id;
+    if new.owner_id is distinct from old.owner_id then
+      if old.owner_id is distinct from (select auth.uid()) then
+        raise exception 'Only the current owner can transfer the league';
+      end if;
+      if new.owner_id is not null and not exists (
+        select 1
+        from public.league_members member
+        where member.league_id = old.id
+          and member.user_id = new.owner_id
+      ) then
+        raise exception 'The new owner must be a league member';
+      end if;
+    end if;
   end if;
   return new;
 end;
@@ -113,5 +125,65 @@ $$;
 
 revoke all on function public.delete_league(uuid) from public, anon;
 grant execute on function public.delete_league(uuid) to authenticated;
+
+create or replace function public.leave_league(p_league_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  player uuid := (select auth.uid());
+  current_owner uuid;
+  next_owner uuid;
+begin
+  if player is null then
+    raise exception 'Authentication required';
+  end if;
+
+  select league.owner_id into current_owner
+  from public.leagues league
+  where league.id = p_league_id
+  for update;
+
+  if not found or not exists (
+    select 1
+    from public.league_members member
+    where member.league_id = p_league_id
+      and member.user_id = player
+  ) then
+    raise exception 'You are not a member of this league';
+  end if;
+
+  if current_owner = player then
+    select member.user_id into next_owner
+    from public.league_members member
+    where member.league_id = p_league_id
+      and member.user_id <> player
+    order by member.joined_at asc, member.user_id asc
+    limit 1;
+
+    if next_owner is null then
+      perform public.delete_league(p_league_id);
+      return;
+    end if;
+
+    update public.leagues
+    set owner_id = next_owner
+    where id = p_league_id;
+  end if;
+
+  delete from public.league_members
+  where league_id = p_league_id
+    and user_id = player;
+
+  if not found then
+    raise exception 'Could not leave the league';
+  end if;
+end;
+$$;
+
+revoke all on function public.leave_league(uuid) from public, anon;
+grant execute on function public.leave_league(uuid) to authenticated;
 
 commit;

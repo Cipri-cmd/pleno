@@ -427,9 +427,9 @@ async function refreshLeagueScoreboards(leagueId = S.league?.id) {
   if (LEAGUE_SCORES.leagueId === leagueId &&
       LEAGUE_SCORES.seasonStartYear === D.seasonStartYear &&
       Date.now() - (LEAGUE_SCORES.updatedAt || 0) < 30000) return true;
+  const previous = JSON.stringify([LEAGUE_SCORES.leagueId, LEAGUE_SCORES.season, LEAGUE_SCORES.rounds, LEAGUE_SCORES.error]);
   LEAGUE_SCORES.loading = true;
   LEAGUE_SCORES.error = "";
-  if (V.tab === "l") render();
   const seasonStartYear = D.seasonStartYear || null;
   try {
     const { data, error } = await AUTH.client.rpc("get_league_scoreboards", {
@@ -458,7 +458,8 @@ async function refreshLeagueScoreboards(leagueId = S.league?.id) {
     return false;
   } finally {
     LEAGUE_SCORES.loading = false;
-    if (V.tab === "l" && leagueId === S.league?.id) render();
+    const current = JSON.stringify([LEAGUE_SCORES.leagueId, LEAGUE_SCORES.season, LEAGUE_SCORES.rounds, LEAGUE_SCORES.error]);
+    if (V.tab === "l" && leagueId === S.league?.id && current !== previous) render();
   }
 }
 async function syncLeagueData(leagueId, userId) {
@@ -504,7 +505,7 @@ async function loadCloudLeague(preferredLeagueId = null) {
     ({ data, error } = await loadMemberships(false));
     if (!error) {
       hasOwnerColumn = false;
-      LEAGUES.warning = "Tus ligas se han cargado, pero falta la migración de borrado de ligas. Ejecuta supabase-delete-league.sql en el SQL Editor de Supabase para activar esa función.";
+      LEAGUES.warning = "Tus ligas se han cargado, pero falta la migración de gestión de ligas. Ejecuta supabase-delete-league.sql en el SQL Editor de Supabase para activar salir y borrar ligas.";
     }
   }
   if (error) throw error;
@@ -1610,9 +1611,45 @@ function leaguePickerModal() {
   if (!V.leaguePickerOpen || !AUTH.session) return "";
   const rows = LEAGUES.items.map((league) => {
     const isOwner = league.ownerId === AUTH.session.user.id;
-    return `<div class="league-picker-row"><button class="league-picker-option ${league.id === S.league?.id ? "is-current" : ""}" type="button" onclick="switchLeague('${esc(league.id)}')" ${LEAGUES.busy ? "disabled" : ""}><span><b>${esc(league.name)}</b><small>${league.id === S.league?.id ? "Liga actual" : `Jugando como ${esc(league.displayName)}`}${isOwner ? " · Creador" : ""}</small></span>${league.id === S.league?.id ? '<strong>ACTIVA</strong>' : '<i aria-hidden="true">→</i>'}</button>${isOwner ? `<button class="league-delete-button" type="button" onclick="deleteLeague('${esc(league.id)}')" aria-label="Borrar liga ${esc(league.name)}" title="Borrar liga" ${LEAGUES.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>` : ""}</div>`;
+    return `<div class="league-picker-row"><button class="league-picker-option ${league.id === S.league?.id ? "is-current" : ""}" type="button" onclick="switchLeague('${esc(league.id)}')" ${LEAGUES.busy ? "disabled" : ""}><span><b>${esc(league.name)}</b><small>${league.id === S.league?.id ? "Liga actual" : `Jugando como ${esc(league.displayName)}`}${isOwner ? " · Creador" : ""}</small></span>${league.id === S.league?.id ? '<strong>ACTIVA</strong>' : '<i aria-hidden="true">→</i>'}</button><button class="league-leave-button" type="button" onclick="leaveLeague('${esc(league.id)}')" aria-label="Salir de la liga ${esc(league.name)}" title="Salir de la liga" ${LEAGUES.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button>${isOwner ? `<button class="league-delete-button" type="button" onclick="deleteLeague('${esc(league.id)}')" aria-label="Borrar liga ${esc(league.name)}" title="Borrar liga" ${LEAGUES.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>` : ""}</div>`;
   }).join("");
-  return `<div class="instructions-overlay league-picker-overlay" role="presentation" onclick="if(event.target===this)closeLeaguePicker()"><section class="instructions-dialog league-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="league-picker-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TUS COMPETICIONES</span><h2 id="league-picker-title">Mis ligas</h2><p>Cambia de liga o únete a otra con su código.</p></div><button class="instructions-close league-picker-close" type="button" onclick="closeLeaguePicker()" aria-label="Cerrar ligas">×</button></header><div class="league-picker-list">${rows || '<p class="profile-hint">Todavía no perteneces a ninguna liga.</p>'}</div>${LEAGUES.warning ? `<p class="profile-hint" role="status">${esc(LEAGUES.warning)}</p>` : ""}<form class="league-picker-join" onsubmit="event.preventDefault();joinAnotherLeague()"><label for="league-join-code">Unirme a otra liga</label><div><input class="t" id="league-join-code" maxlength="10" autocomplete="off" placeholder="Código de invitación" required ${LEAGUES.busy ? "disabled" : ""}><button class="btn" type="submit" ${LEAGUES.busy ? "disabled" : ""}>${LEAGUES.busy ? "Uniéndote…" : "Unirme"}</button></div></form>${LEAGUES.error ? `<p class="profile-error" role="alert">${esc(LEAGUES.error)}</p>` : ""}</section></div>`;
+  return `<div class="instructions-overlay league-picker-overlay" role="presentation" onclick="if(event.target===this)closeLeaguePicker()"><section class="instructions-dialog league-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="league-picker-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TUS COMPETICIONES</span><h2 id="league-picker-title">Mis ligas</h2><p>Cambia de liga, sal de una o únete a otra con su código.</p></div><button class="instructions-close league-picker-close" type="button" onclick="closeLeaguePicker()" aria-label="Cerrar ligas">×</button></header><div class="league-picker-list">${rows || '<p class="profile-hint">Todavía no perteneces a ninguna liga.</p>'}</div>${LEAGUES.warning ? `<p class="profile-hint" role="status">${esc(LEAGUES.warning)}</p>` : ""}<form class="league-picker-join" onsubmit="event.preventDefault();joinAnotherLeague()"><label for="league-join-code">Unirme a otra liga</label><div><input class="t" id="league-join-code" maxlength="10" autocomplete="off" placeholder="Código de invitación" required ${LEAGUES.busy ? "disabled" : ""}><button class="btn" type="submit" ${LEAGUES.busy ? "disabled" : ""}>${LEAGUES.busy ? "Uniéndote…" : "Unirme"}</button></div></form>${LEAGUES.error ? `<p class="profile-error" role="alert">${esc(LEAGUES.error)}</p>` : ""}</section></div>`;
+}
+async function leaveLeague(leagueId) {
+  const league = LEAGUES.items.find((item) => item.id === leagueId);
+  if (!league || LEAGUES.busy) return;
+  const isOwner = league.ownerId === AUTH.session?.user?.id;
+  const confirmation = isOwner
+    ? `¿Salir de «${league.name}»? La administración pasará al miembro más antiguo. Si eres la única persona, se borrará la liga y sus datos.`
+    : `¿Salir de «${league.name}»? Dejarás de ver sus partidos de liga y su clasificación.`;
+  if (!window.confirm(confirmation)) return;
+  LEAGUES.busy = true;
+  LEAGUES.error = "";
+  render();
+  let left = false;
+  try {
+    const { error } = await AUTH.client.rpc("leave_league", { p_league_id: leagueId });
+    if (error) throw error;
+    left = true;
+    LEAGUES.items = LEAGUES.items.filter((item) => item.id !== leagueId);
+    if (S.league?.id === leagueId) {
+      const nextLeague = LEAGUES.items[0];
+      if (nextLeague) await activateLeague(nextLeague.id, nextLeague.displayName);
+      else await loadCloudLeague();
+    }
+    V.leaguePickerOpen = false;
+    toast(`Has salido de «${league.name}».`);
+  } catch (error) {
+    const message = errorText(error);
+    LEAGUES.error = left
+      ? `Has salido de la liga, pero no se pudo actualizar la pantalla: ${message}. Recarga la página.`
+      : error?.code === "PGRST202"
+        ? `${message} · Ejecuta de nuevo supabase-delete-league.sql en Supabase.`
+        : `No se pudo salir de la liga: ${message}`;
+  } finally {
+    LEAGUES.busy = false;
+    render();
+  }
 }
 async function deleteLeague(leagueId) {
   const league = LEAGUES.items.find((item) => item.id === leagueId);
@@ -2032,19 +2069,45 @@ function cycleTheme() {
   const themes = ["carbon", "blanco", "medianoche"];
   setTh(themes[(themes.indexOf(S.th) + 1) % themes.length]);
 }
+function currentTabContent() {
+  if (!D.ready) return `<div class="skel"></div><div class="skel"></div><div class="skel"></div>`;
+  if (D.err && V.tab !== "g") return `<div class="card err"><b>No se pudieron cargar los datos</b><p>${esc(D.err)}</p></div>`;
+  return { i: tInicio, p: tPart, c: tClas, k: tClubs, s: tStats, l: tLiga, g: tJuego }[V.tab]();
+}
+function syncNavigationState(tab) {
+  const app = $("#app");
+  app?.querySelectorAll(".desktop-nav button, .mobile-more-menu button[onclick^=\"switchTab('\"], .mobile-nav-item[onclick^=\"switchTab('\"]")
+    .forEach((button) => {
+      const key = button.getAttribute("onclick")?.match(/^switchTab\('([^']+)'\)$/)?.[1];
+      const active = key === tab;
+      button.classList.toggle(button.classList.contains("mobile-nav-item") ? "is-active" : "on", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+  const more = app?.querySelector(".mobile-nav-more");
+  if (more) more.classList.toggle("is-active", ["k", "s", "l", "g"].includes(tab));
+  app?.querySelector(".mobile-more-menu")?.setAttribute("hidden", "");
+  app?.querySelector(".mobile-nav-backdrop")?.remove();
+}
 function switchTab(tab) {
   const closeMoreMenu = V.mobileMoreOpen;
   V.mobileMoreOpen = false;
   if (V.tab === tab) {
-    if (closeMoreMenu) render();
+    if (closeMoreMenu) syncNavigationState(tab);
     return;
   }
-  const update = () => { V.tab = tab; V.team = null; render(); };
-  update();
+  V.tab = tab;
+  V.team = null;
+  const main = $("#app main.tab-content");
+  if (!main) {
+    render();
+    return;
+  }
+  syncNavigationState(tab);
+  main.innerHTML = currentTabContent();
   if (tab === "g" && GAME.date !== madridDate()) loadScoutGame();
   requestAnimationFrame(() => {
-    const main = $("#app main");
-    if (!main) return;
+    if (!main.isConnected) return;
     main.classList.remove("tab-enter");
     void main.offsetWidth;
     main.classList.add("tab-enter");
@@ -2071,14 +2134,11 @@ function render() {
     return;
   }
   const tabs = [["i", "Inicio"], ["p", "Partidos"], ["c", "Clasificación"], ["k", "Clubes"], ["s", "Estadísticas"], ["l", "Mi liga"], ["g", "Juego"]];
-  let body;
-  if (!D.ready) body = `<div class="skel"></div><div class="skel"></div><div class="skel"></div>`;
-  else if (D.err && V.tab !== "g") body = `<div class="card err"><b>No se pudieron cargar los datos</b><p>${esc(D.err)}</p></div>`;
-  else body = { i: tInicio, p: tPart, c: tClas, k: tClubs, s: tStats, l: tLiga, g: tJuego }[V.tab]();
+  const body = currentTabContent();
   const themeName = { carbon: "carbón", blanco: "claro", medianoche: "medianoche" }[S.th] || "carbón";
   const syncError = Boolean(D.matchesError || D.standingsError || D.teamsError || D.scorersError);
   const syncStale = D.matchesStale || D.standingsStale || D.teamsStale || D.scorersStale;
-  a.innerHTML = `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><button class="league-switcher" type="button" onclick="openLeaguePicker()" aria-label="Mis ligas: cambiar de liga o unirme a otra" title="Mis ligas · cambiar de liga o unirme a otra"><span class="league-switcher-label">Mis ligas</span><b>${esc(S.league.name)}</b><i aria-hidden="true">⌄</i></button><span class="sp"></span><div class="top-actions"><button class="btn ghost theme-button ${S.th}" onclick="cycleTheme()" aria-label="Cambiar fondo. Tema actual: ${themeName}" title="Cambiar fondo · ${themeName}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></button><button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div><nav class="desktop-nav" aria-label="Secciones principales">${tabs.map(([k, n]) => `<button class="${V.tab === k ? "on" : ""}" onclick="switchTab('${k}')" ${V.tab === k ? 'aria-current="page"' : ""}>${n}</button>`).join("")}</nav><div class="data-sync ${syncError ? "has-error" : syncStale ? "is-stale" : ""}" aria-label="Estado de actualización de datos" title="Actualización automática: partidos cada 30 segundos, clasificación cada minuto, goleadores cada 10 minutos y clubes cada día"><i></i><span class="${freshnessClass(D.matchesStale, D.matchesError)}">${esc(freshnessLabel("Partidos", D.lastMatchesUpdate, D.matchesStale, D.matchesError))}</span><span class="${freshnessClass(D.standingsStale, D.standingsError)}">${esc(freshnessLabel("Clasificación", D.lastStandingsUpdate, D.standingsStale, D.standingsError))}</span><span class="${freshnessClass(D.teamsStale, D.teamsError)}">${esc(freshnessLabel("Clubes", D.lastTeamsUpdate, D.teamsStale, D.teamsError))}</span><span class="${freshnessClass(D.scorersStale, D.scorersError)}">${esc(freshnessLabel("Goleadores", D.lastScorersUpdate, D.scorersStale, D.scorersError))}</span></div></div><main class="tab-content" style="--tab-shift:${V.tabDirection * 1}">${body}</main>${mobileNavigation(tabs)}`;
+  a.innerHTML = `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><button class="league-switcher" type="button" onclick="openLeaguePicker()" aria-label="Mis ligas: cambiar de liga o unirme a otra" title="Mis ligas · cambiar de liga o unirme a otra"><span class="league-switcher-label">Liga activa</span><b>${esc(S.league.name)}</b><i aria-hidden="true">⌄</i></button><span class="sp"></span><div class="top-actions"><button class="btn ghost theme-button ${S.th}" onclick="cycleTheme()" aria-label="Cambiar fondo. Tema actual: ${themeName}" title="Cambiar fondo · ${themeName}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></button><button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div><nav class="desktop-nav" aria-label="Secciones principales">${tabs.map(([k, n]) => `<button class="${V.tab === k ? "on" : ""}" onclick="switchTab('${k}')" ${V.tab === k ? 'aria-current="page"' : ""}>${n}</button>`).join("")}</nav><div class="data-sync ${syncError ? "has-error" : syncStale ? "is-stale" : ""}" aria-label="Estado de actualización de datos" title="Actualización automática: partidos cada 30 segundos, clasificación cada minuto, goleadores cada 10 minutos y clubes cada día"><i></i><span class="${freshnessClass(D.matchesStale, D.matchesError)}">${esc(freshnessLabel("Partidos", D.lastMatchesUpdate, D.matchesStale, D.matchesError))}</span><span class="${freshnessClass(D.standingsStale, D.standingsError)}">${esc(freshnessLabel("Clasificación", D.lastStandingsUpdate, D.standingsStale, D.standingsError))}</span><span class="${freshnessClass(D.teamsStale, D.teamsError)}">${esc(freshnessLabel("Clubes", D.lastTeamsUpdate, D.teamsStale, D.teamsError))}</span><span class="${freshnessClass(D.scorersStale, D.scorersError)}">${esc(freshnessLabel("Goleadores", D.lastScorersUpdate, D.scorersStale, D.scorersError))}</span></div></div><main class="tab-content" style="--tab-shift:${V.tabDirection * 1}">${body}</main>${mobileNavigation(tabs)}`;
   const topActions = a.querySelector(".top-actions");
   if (topActions) topActions.insertAdjacentHTML("afterbegin", infoButton() + profileButton());
   a.insertAdjacentHTML("beforeend", instructionsModal() + profileModal() + leaguePickerModal());
@@ -2094,7 +2154,7 @@ function render() {
 if (typeof document !== "undefined" && document.documentElement) {
   document.documentElement.dataset.th = S.th;
   document.addEventListener("keydown", handleInstructionsKeydown);
-  render(); loadMain(); initializeAuth(); setInterval(poll, 30000); setInterval(refreshCloudPredictions, 15000);
+  render(); loadMain(); initializeAuth(); setInterval(poll, 30000); setInterval(refreshCloudPredictions, 60000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") poll(); });
   window.addEventListener("online", () => poll());
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("/sw.js").catch((error) => console.error("No se pudo registrar el service worker de PLENO:", error));
