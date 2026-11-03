@@ -674,3 +674,56 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
   .tab-content img,.brand-lockup img,.auth-brand-mark,.room-avatar img,.profile-photo-stage img{animation:none;transition:none}
   .tab-content img:hover,.brand-lockup:hover img,.room-avatar:hover img,.profile-photo-stage:hover img,.mc .tm:hover .cr,.league-avatar-picker:hover .room-avatar{transform:none;filter:none}
 }
+.home-field{background-size:200% 100%;animation:field-turf-flow 8s ease-in-out infinite alternate}
+.home-field:after{position:absolute;inset:0;z-index:1;content:"";pointer-events:none;background:linear-gradient(112deg,transparent 30%,#ffffff0d 47%,#ffffff1a 50%,#ffffff0d 53%,transparent 70%);transform:translateX(-110%);animation:field-light-sweep 5s ease-in-out infinite}
+.field-markings:before{animation:field-center-pulse 3.2s ease-in-out infinite}
+.field-player{animation:field-player-run 2.4s ease-in-out infinite}
+.fp1{animation-delay:-.2s}.fp2{animation-delay:-1.3s}.fp3{animation-delay:-.8s}.fp4{animation-delay:-1.9s}.fp5{animation-delay:-.5s}.fp6{animation-delay:-1.6s}
+.field-player:after{position:absolute;inset:-5px;border:1px solid #ffb07899;border-radius:50%;content:"";animation:field-player-pulse 2.4s ease-out infinite}
+.fp1:after{animation-delay:-.2s}.fp2:after{animation-delay:-1.3s}.fp3:after{animation-delay:-.8s}.fp4:after{animation-delay:-1.9s}.fp5:after{animation-delay:-.5s}.fp6:after{animation-delay:-1.6s}
+.field-ball{animation:field-ball-pass 4.2s cubic-bezier(.45,0,.2,1) infinite;will-change:transform}
+.auth-illustration{animation:auth-field-hover 5s ease-in-out infinite}
+.auth-pitch-wrap:after{animation:auth-field-glow 3.6s ease-in-out infinite}
+@keyframes field-turf-flow{to{background-position:100% 0}}
+@keyframes field-light-sweep{0%,20%{transform:translateX(-110%);opacity:0}35%{opacity:1}72%,100%{transform:translateX(110%);opacity:0}}
+@keyframes field-center-pulse{0%,100%{box-shadow:0 0 0 0 #ffffff00}50%{box-shadow:0 0 12px 3px #ffffff38}}
+@keyframes field-player-run{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(2px,-3px) scale(1.07)}65%{transform:translate(-2px,2px) scale(.96)}}
+@keyframes field-player-pulse{0%,100%{transform:scale(.75);opacity:0}35%{opacity:.8}75%{transform:scale(1.65);opacity:0}}
+@keyframes field-ball-pass{0%,8%{transform:translate(0,0) rotate(0)}34%{transform:translate(30px,-12px) rotate(170deg)}39%{transform:translate(32px,-10px) rotate(210deg)}68%{transform:translate(-37px,13px) rotate(430deg)}76%,100%{transform:translate(0,0) rotate(720deg)}}
+@keyframes auth-field-hover{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes auth-field-glow{0%,100%{opacity:.6;transform:scaleX(.96)}50%{opacity:1;transform:scaleX(1.04)}}
+.prediction-sheet.is-celebrating .prediction-sheet-body{animation:prediction-celebrate-body .7s ease both}
+.prediction-sheet.is-celebrating .prediction-save{animation:prediction-save-impact .55s cubic-bezier(.2,.8,.2,1) both}
+.prediction-celebration{position:absolute;inset:0;z-index:5;display:grid;align-content:center;justify-items:center;gap:12px;overflow:hidden;padding:28px 18px;background:radial-gradient(ellipse at 50% 45%,#ff8b3538,transparent 44%),#08090ceb;opacity:0;pointer-events:none;transition:opacity .2s ease}
+.prediction-celebration.is-visible{opacity:1}
+.prediction-celebration>strong{color:#fff;font-size:clamp(17px,4vw,25px);font-weight:950;letter-spacing:1.2px;text-align:center;text-shadow:0 0 25px #ff784b88;transform:translateY(10px) scale(.9);opacity:0}
+.prediction-celebration.is-visible>strong{animation:celebration-title-in .45s .2s cubic-bezier(.2,.8,.2,1) forwards}
+.prediction-celebration>span{color:#ffbd80;font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;opacity:0}
+.prediction-celebration.is-visible>span{animation:celebration-copy-in .35s .42s ease forwards}
+.celebration-stadium{position:relative;width:min(78vw,310px);height:132px;overflow:hidden;border:1px solid #ffffff55;border-radius:20px;background:repeating-linear-gradient(90deg,#0b3529 0 12.5%,#104637 12.5% 25%);box-shadow:0 0 0 1px #ff9a4e22,0 0 55px #ff6a342e,inset 0 0 35px #06120d}
+.celebration-stadium:before{position:absolute;inset:10px;border:1px solid #ffffff70;border-radius:12px;content:""}
+.celebration-stadium:after{position:absolute;top:10px;bottom:10px;left:50%;width:1px;background:#ffffff65;content:""}
+.celebration-stadium i,.celebration-stadium b{position:absolute;top:50%;z-index:1;width:42px;height:68px;border:1px solid #ffffff65;transform:translateY(-50%)}
+.celebration-stadium i{left:10px;border-left:0;border-radius:0 24px 24px 0}
+.celebration-stadium b{right:10px;border-right:0;border-radius:24px 0 0 24px}
+.celebration-stadium em{position:absolute;top:50%;left:50%;width:46px;height:46px;border:1px solid #ffffff65;border-radius:50%;transform:translate(-50%,-50%)}
+.celebration-ball{position:absolute;top:calc(50% - 13px);left:18%;z-index:2;display:grid;width:26px;height:26px;place-items:center;border-radius:50%;background:#fff;font-size:16px;box-shadow:0 0 18px #fff9}
+.prediction-celebration.is-visible .celebration-ball{animation:celebration-goal .82s .16s cubic-bezier(.18,.72,.24,1) both}
+.celebration-sparks{position:absolute;top:43%;left:50%;width:1px;height:1px}
+.celebration-sparks i{position:absolute;width:7px;height:12px;border-radius:2px;background:var(--spark-color,#ffd067);opacity:0}
+.prediction-celebration.is-visible .celebration-sparks i{animation:celebration-spark .8s .25s ease-out both}
+.prediction-just-saved{animation:prediction-card-confirm .9s ease both}
+@keyframes prediction-celebrate-body{35%{transform:scale(1.015)}100%{transform:scale(1)}}
+@keyframes prediction-save-impact{30%{transform:scale(1.08)}60%{transform:scale(.97)}100%{transform:scale(1)}}
+@keyframes celebration-title-in{to{transform:translateY(0) scale(1);opacity:1}}
+@keyframes celebration-copy-in{to{opacity:1}}
+@keyframes celebration-goal{0%{transform:translate(0,0) rotate(0) scale(.9)}62%{transform:translate(clamp(115px,42vw,210px),-10px) rotate(600deg) scale(1.15)}78%{transform:translate(clamp(122px,43vw,217px),-9px) rotate(680deg) scale(.8)}100%{transform:translate(0,0) rotate(900deg) scale(.9)}}
+@keyframes celebration-spark{0%{transform:rotate(var(--angle)) translateY(0) scale(.3);opacity:0}22%{opacity:1}100%{transform:rotate(var(--angle)) translateY(-105px) scale(.7);opacity:0}}
+@keyframes prediction-card-confirm{0%,100%{box-shadow:0 8px 24px #0002}25%,65%{border-color:var(--ok);box-shadow:0 0 0 2px color-mix(in srgb,var(--ok) 46%,transparent),0 0 34px color-mix(in srgb,var(--ok) 30%,transparent)}45%,85%{box-shadow:0 8px 24px #0002}}
+@media(prefers-reduced-motion:reduce){
+  .home-field,.home-field:after,.field-markings:before,.field-player,.field-player:after,.field-ball,.auth-illustration,.auth-pitch-wrap:after{animation:none!important;will-change:auto}
+  .prediction-celebration,.prediction-celebration>strong,.prediction-celebration>span,.celebration-ball,.celebration-sparks i,.prediction-sheet.is-celebrating .prediction-sheet-body,.prediction-sheet.is-celebrating .prediction-save,.prediction-just-saved{animation:none!important;transition:none!important}
+  .prediction-celebration{opacity:1}
+  .prediction-celebration>strong,.prediction-celebration>span{transform:none;opacity:1}
+  .celebration-ball{left:70%}
+}

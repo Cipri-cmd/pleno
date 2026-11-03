@@ -2048,7 +2048,10 @@ function closePredictionSheet(refresh = false) {
     PREDICTION.returnFocus = null;
     PREDICTION.error = "";
     PREDICTION.previousJoker = null;
-    if (refresh) render();
+    if (refresh) {
+      render();
+      requestAnimationFrame(() => animatePredictionCardSaved(matchId));
+    }
     requestAnimationFrame(() => {
       const target = restoreFocus?.isConnected
         ? restoreFocus
@@ -2075,6 +2078,7 @@ function closePredictionSheet(refresh = false) {
         ? restoreFocus
         : document.querySelector(`.mc[data-match-id="${matchId}"] .match-sheet-trigger`);
       focusTarget?.focus({ preventScroll: true });
+      if (refresh) requestAnimationFrame(() => animatePredictionCardSaved(matchId));
     }, finishClose);
     return;
   }
@@ -2170,13 +2174,40 @@ function savePredictionSheet() {
 function predictionSheetSaved() {
   if (PREDICTION.matchId == null) return;
   const button = document.querySelector(".prediction-save");
-  if (!button) return;
+  const sheet = document.querySelector(".prediction-sheet");
+  if (!button || !sheet) return;
+  const matchId = PREDICTION.matchId;
+  PREDICTION.saving = true;
   button.classList.remove("is-saving");
   button.classList.add("is-saved");
   const label = button.querySelector(".prediction-save-label");
-  if (label) label.textContent = "Pronóstico guardado";
-  if (navigator.vibrate) navigator.vibrate(18);
-  setTimeout(() => closePredictionSheet(true), 520);
+  if (label) label.textContent = "¡Porra al campo!";
+  sheet.classList.add("is-celebrating");
+  const celebration = document.createElement("div");
+  celebration.className = "prediction-celebration";
+  celebration.setAttribute("role", "status");
+  celebration.setAttribute("aria-live", "assertive");
+  celebration.innerHTML = `<div class="celebration-stadium" aria-hidden="true"><i></i><b></b><em></em><span class="celebration-ball">⚽</span></div><strong>¡PRONÓSTICO GUARDADO!</strong><span>Que ruede el balón</span><div class="celebration-sparks" aria-hidden="true">${Array.from({ length: 18 }, (_, index) => `<i style="--angle:${index * 20}deg;--spark-color:hsl(${(index * 31) % 360},95%,62%)"></i>`).join("")}</div>`;
+  sheet.append(celebration);
+  if (navigator.vibrate) navigator.vibrate([35, 40, 70]);
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    celebration.classList.add("is-visible");
+  } else requestAnimationFrame(() => celebration.classList.add("is-visible"));
+  setTimeout(() => {
+    if (PREDICTION.matchId !== matchId) return;
+    PREDICTION.saving = false;
+    closePredictionSheet(true);
+  }, 1450);
+}
+function animatePredictionCardSaved(matchId) {
+  const card = document.querySelector(`.mc[data-match-id="${matchId}"]`);
+  if (!card) return;
+  card.classList.remove("prediction-just-saved");
+  void card.offsetWidth;
+  card.classList.add("prediction-just-saved");
+  card.addEventListener("animationend", (event) => {
+    if (event.target === card) card.classList.remove("prediction-just-saved");
+  }, { once: true });
 }
 function mc(m) {
   const id = m.id, prediction = S.preds[id], editable = open(m), finished = fin(m), inPlay = live(m), result = res(m);
