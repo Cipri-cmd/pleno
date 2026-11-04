@@ -1481,6 +1481,11 @@ async function refreshScoutState(showError = true) {
   if (!AUTH.client || !AUTH.session || !S.league?.id) return;
   const date = madridDate();
   const leagueId = S.league.id;
+  if (GAME.date !== date) {
+    GAME.date = date;
+    GAME.data = null;
+    GAME.error = "";
+  }
   let stateLoaded = false;
   AUTH.client.rpc("get_minigame_score_modifiers", { p_league_id: leagueId })
     .then(({ data, error }) => {
@@ -1503,10 +1508,11 @@ async function refreshScoutState(showError = true) {
     const match = featuredMatch();
     const { data, error } = await AUTH.client.rpc("get_daily_minigames_state", {
       p_challenge_date: date,
-      p_league_id: S.league.id,
+      p_league_id: leagueId,
       p_match_id: match?.id ?? null
     });
     if (error) throw error;
+    if (date !== madridDate() || S.league?.id !== leagueId) return;
     GAME.data = data;
     GAME.date = date;
     stateLoaded = true;
@@ -1518,6 +1524,7 @@ async function refreshScoutState(showError = true) {
       ? ""
       : `No se ha publicado el reto del ${date}. Comprueba que el cron diario de Render esté activo y que se hayan aplicado los SQL de minijuegos y automatización.`;
   } catch (error) {
+    if (date !== madridDate() || S.league?.id !== leagueId) return;
     const message = error.message || String(error);
     GAME.error = /get_daily_minigames_state|submit_daily_player_guess|spin_daily_var|schema cache/i.test(message)
       ? "Falta ejecutar supabase-minigames.sql en Supabase para instalar los tres juegos."
@@ -1947,7 +1954,7 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
     ${AUTH.mode === "signup" ? '<label class="auth-consent"><input id="auth-terms" type="checkbox" required><span>Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos de Uso</a> y la <a href="/privacidad" target="_blank" rel="noopener">Política de Privacidad</a>.</span></label>' : ""}
     <button class="btn auth-submit" type="submit" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}>${AUTH.busy ? '<svg class="auth-spinner" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity=".28" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>Entrando…' : AUTH.mode === "signup" ? "Crear cuenta" : AUTH.mode === "update" ? "Guardar contraseña" : 'Entrar <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>'}</button>
   </form>
-  ${AUTH.mode === "login" ? `<div class="auth-divider"><span>O CONTINÚA CON</span></div><label class="auth-consent"><input id="oauth-terms" type="checkbox" required><span>Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos de Uso</a> y la <a href="/privacidad" target="_blank" rel="noopener">Política de Privacidad</a>.</span></label><button class="btn ghost auth-submit google-submit" onclick="signInGoogle()" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}><svg class="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#34A853" d="M6.3 14.7l6.6 4.8C14.5 15.1 18.9 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#FBBC05" d="M24 44c5.2 0 9.9-1.7 13.2-4.6l-6.1-5.2c-1.7 1.2-4.2 2-7.1 2-5.3 0-9.7-3.3-11.3-7.9l-6.6 5.1C9.4 39.6 16.1 44 24 44z"/><path fill="#EA4335" d="M6.3 14.7C4.8 17.4 4 20.6 4 24s.8 6.6 2.3 9.3l6.6-5.1c-.6-1.3-.9-2.7-.9-4.2s.3-2.9.9-4.2z"/></svg>${AUTH.googleBusy ? "Abriendo Google…" : "Continuar con Google"}</button>` : ""}
+  ${AUTH.mode === "login" ? `<div class="auth-divider"><span>O CONTINÚA CON</span></div><label class="auth-consent"><input id="oauth-terms" type="checkbox" required><span>Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos de Uso</a> y la <a href="/privacidad" target="_blank" rel="noopener">Política de Privacidad</a>.</span></label><button class="btn ghost auth-submit google-submit" onclick="signInGoogle()" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}><svg class="google-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 13.04a6.6 6.6 0 0 1-.34-2.04c0-.71.12-1.39.33-2.04V6.12H2.18a11 11 0 0 0 0 9.76l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.38 14.97 0 12 0 7.42 0 3.46 2.6 1.22 6.4l3.67 2.85C5.77 6.74 8.63 5.38 12 5.38z"/></svg>${AUTH.googleBusy ? "Abriendo Google…" : "Continuar con Google"}</button>` : ""}
   ${AUTH.mode === "login" || AUTH.mode === "signup" ? `<p class="auth-switch">${AUTH.mode === "signup" ? "¿Ya tienes cuenta?" : "¿Aún no tienes cuenta?"} <button class="auth-link" onclick="setAuthMode('${AUTH.mode === "signup" ? "login" : "signup"}')">${AUTH.mode === "signup" ? "Inicia sesión" : "Regístrate"}</button></p>` : ""}
   <p class="auth-privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.7 2.9 8.1 7 10 4.1-1.9 7-5.3 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>Tu cuenta mantiene tus ligas y pronósticos sincronizados.</p>
   <nav class="legal-links" aria-label="Información legal"><a href="/privacidad">Privacidad</a><a href="/aviso-legal">Aviso legal</a><a href="/cookies">Cookies</a><a href="/terminos">Términos</a></nav>
@@ -2671,6 +2678,8 @@ function saveCookiePreferences(acceptAll = null) {
 }
 let lastChallengeDay = madridDate();
 let lastLocalDay = new Intl.DateTimeFormat("en-CA").format(new Date());
+let lastMissingChallengeRetryAt = 0;
+let missingChallengeRefresh = false;
 function refreshOnChallengeDayChange() {
   const challengeDay = madridDate();
   const localDay = new Intl.DateTimeFormat("en-CA").format(new Date());
@@ -2679,6 +2688,16 @@ function refreshOnChallengeDayChange() {
   lastLocalDay = localDay;
   if (AUTH.session && S.league?.id) refreshScoutState(false);
   if (V.tab === "g") render();
+}
+function refreshMissingDailyChallenge() {
+  if (
+    V.tab !== "g" || !AUTH.session || !S.league?.id || GAME.loading ||
+    GAME.data?.available || GAME.date !== madridDate() || missingChallengeRefresh ||
+    Date.now() - lastMissingChallengeRetryAt < 60000
+  ) return;
+  lastMissingChallengeRetryAt = Date.now();
+  missingChallengeRefresh = true;
+  refreshScoutState(false).finally(() => { missingChallengeRefresh = false; });
 }
 function render() {
   const a = $("#app");
@@ -2726,7 +2745,7 @@ if (typeof document !== "undefined" && document.documentElement) {
   document.documentElement.dataset.th = S.th;
   document.addEventListener("keydown", handleInstructionsKeydown);
   renderCookieBanner();
-  render(); loadMain(); initializeAuth(); setInterval(poll, 30000); setInterval(refreshCloudPredictions, 60000); setInterval(refreshOnChallengeDayChange, 30000);
+  render(); loadMain(); initializeAuth(); setInterval(poll, 30000); setInterval(refreshCloudPredictions, 60000); setInterval(refreshOnChallengeDayChange, 30000); setInterval(refreshMissingDailyChallenge, 30000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") poll(); });
   window.addEventListener("online", () => poll());
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("/sw.js").catch((error) => console.error("No se pudo registrar el service worker de PLENO:", error));
