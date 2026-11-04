@@ -152,7 +152,7 @@ export async function publishDailyChallenge({
   const existingResponse = await fetch(
     `${supabaseUrl.replace(/\/+$/, "")}/rest/v1/daily_challenges?challenge_date=eq.${challengeDate}&select=id&limit=1`,
     {
-      headers: { apikey: secretKey, authorization: `****** },
+      headers: { apikey: secretKey, authorization: "Bearer " + secretKey },
       signal: AbortSignal.timeout(15000)
     }
   );

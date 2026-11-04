@@ -718,15 +718,19 @@ async function handleAuthSession(session) {
 }
 async function persistOAuthLegalConsent() {
   const consentKey = "pleno:google-terms-consent:v1";
+  const ageConsentKey = "pleno:google-age-consent:v1";
   const acceptedAt = sessionStorage.getItem(consentKey);
-  if (!acceptedAt || !AUTH.session || !AUTH.client) return;
+  const ageConfirmedAt = sessionStorage.getItem(ageConsentKey);
+  if (!acceptedAt || !ageConfirmedAt || !AUTH.session || !AUTH.client) return;
   const { error } = await AUTH.client.from("user_legal_consents").upsert({
     user_id: AUTH.session.user.id,
     terms_version: "1.0",
-    accepted_at: acceptedAt
-  }, { onConflict: "user_id", ignoreDuplicates: true });
+    accepted_at: acceptedAt,
+    age_confirmed_at: ageConfirmedAt
+  }, { onConflict: "user_id" });
   if (error) throw error;
   sessionStorage.removeItem(consentKey);
+  sessionStorage.removeItem(ageConsentKey);
 }
 function authRedirectUrl() {
   return new URL("/", window.location.origin).toString();
@@ -794,6 +798,7 @@ async function submitAuth() {
   const password = $("#auth-password")?.value || "";
   if (!email || !password) return toast("Escribe tu correo y contraseña");
   if (AUTH.mode === "signup" && !$("#auth-terms")?.checked) return toast("Debes aceptar los Términos de Uso y la Política de Privacidad.", "error");
+  if (AUTH.mode === "signup" && !$("#auth-age")?.checked) return toast("Debes confirmar que tienes al menos 14 años para crear una cuenta.", "error");
   if (password.length < 6) return toast("La contraseña debe tener al menos 6 caracteres");
   AUTH.email = email;
   AUTH.password = password;
@@ -801,13 +806,18 @@ async function submitAuth() {
   AUTH.error = "";
   render();
   try {
+    const signupConsentAt = new Date().toISOString();
     const result = AUTH.mode === "signup"
       ? await AUTH.client.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: authRedirectUrl(),
-          data: { terms_version: "1.0", terms_accepted_at: new Date().toISOString() }
+          data: {
+            terms_version: "1.0",
+            terms_accepted_at: signupConsentAt,
+            age_confirmed_at: signupConsentAt
+          }
         }
       })
       : await AUTH.client.auth.signInWithPassword({ email, password });
@@ -836,19 +846,26 @@ async function signInGoogle() {
   if (!AUTH.client) return toast("La conexión de Supabase todavía no está lista");
   if (AUTH.busy || AUTH.googleBusy) return;
   if (!$("#oauth-terms")?.checked) return toast("Acepta los Términos de Uso y la Política de Privacidad para continuar con Google.", "error");
+  if (!$("#oauth-age")?.checked) return toast("Confirma que tienes al menos 14 años para continuar con Google.", "error");
   AUTH.googleBusy = true;
   AUTH.error = "";
   render();
   try {
-    try { sessionStorage.setItem("pleno:google-terms-consent:v1", new Date().toISOString()); }
+    const consentedAt = new Date().toISOString();
+    try { sessionStorage.setItem("pleno:google-terms-consent:v1", consentedAt); }
     catch { throw new Error("El navegador no permite guardar la aceptación requerida para el registro con Google."); }
+    try { sessionStorage.setItem("pleno:google-age-consent:v1", consentedAt); }
+    catch { throw new Error("El navegador no permite guardar la confirmación de edad requerida."); }
     const { error } = await AUTH.client.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: authRedirectUrl() }
     });
     if (error) throw error;
   } catch (error) {
-    try { sessionStorage.removeItem("pleno:google-terms-consent:v1"); }
+    try {
+      sessionStorage.removeItem("pleno:google-terms-consent:v1");
+      sessionStorage.removeItem("pleno:google-age-consent:v1");
+    }
     catch (storageError) { console.warn(`No se pudo limpiar la aceptación temporal de Google: ${errorText(storageError)}`); }
     AUTH.error = `No se pudo iniciar con Google: ${friendlyAuthError(error)}. Comprueba que el proveedor Google esté configurado en Supabase.`;
     render();
@@ -2423,10 +2440,10 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
     <label for="auth-password">${AUTH.mode === "update" ? "NUEVA CONTRASEÑA" : "CONTRASEÑA"}</label>
     <div class="auth-input-wrap auth-password-field"><svg class="auth-input-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input class="t" id="auth-password" type="password" autocomplete="${AUTH.mode === "signup" || AUTH.mode === "update" ? "new-password" : "current-password"}" minlength="6" required value="${esc(AUTH.password)}" placeholder="Al menos 6 caracteres"><button class="password-visibility" type="button" onclick="togglePasswordVisibility(this)" aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/><path class="password-eye-slash" d="m4 4 16 16"/></svg></button></div>
     ${AUTH.mode === "login" ? `<div class="auth-forgot-row"><button class="auth-link" type="button" onclick="resetPassword()">¿Olvidaste la contraseña?</button></div>` : ""}
-    ${AUTH.mode === "signup" ? '<label class="auth-consent"><input id="auth-terms" type="checkbox" required><span>Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos de Uso</a> y la <a href="/privacidad" target="_blank" rel="noopener">Política de Privacidad</a>.</span></label>' : ""}
+    ${AUTH.mode === "signup" ? '<label class="auth-consent"><input id="auth-terms" type="checkbox" required><span>Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos de Uso</a> y la <a href="/privacidad" target="_blank" rel="noopener">Política de Privacidad</a>.</span></label><label class="auth-consent"><input id="auth-age" type="checkbox" required><span>Confirmo que tengo al menos 14 años.</span></label>' : ""}
     <button class="btn auth-submit" type="submit" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}>${AUTH.busy ? '<svg class="auth-spinner" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity=".28" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>Entrando…' : AUTH.mode === "signup" ? "Crear cuenta" : AUTH.mode === "update" ? "Guardar contraseña" : 'Entrar <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>'}</button>
   </form>
-  ${AUTH.mode === "login" ? `<div class="auth-divider"><span>O CONTINÚA CON</span></div><label class="auth-consent"><input id="oauth-terms" type="checkbox" required><span>Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos de Uso</a> y la <a href="/privacidad" target="_blank" rel="noopener">Política de Privacidad</a>.</span></label><button class="btn ghost auth-submit google-submit" onclick="signInGoogle()" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}><svg class="google-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 13.04a6.6 6.6 0 0 1-.34-2.04c0-.71.12-1.39.33-2.04V6.12H2.18a11 11 0 0 0 0 9.76l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.38 14.97 0 12 0 7.42 0 3.46 2.6 1.22 6.4l3.67 2.85C5.77 6.74 8.63 5.38 12 5.38z"/></svg>${AUTH.googleBusy ? "Abriendo Google…" : "Continuar con Google"}</button>` : ""}
+  ${AUTH.mode === "login" ? `<div class="auth-divider"><span>O CONTINÚA CON</span></div><label class="auth-consent"><input id="oauth-terms" type="checkbox" required><span>Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos de Uso</a> y la <a href="/privacidad" target="_blank" rel="noopener">Política de Privacidad</a>.</span></label><label class="auth-consent"><input id="oauth-age" type="checkbox" required><span>Confirmo que tengo al menos 14 años.</span></label><button class="btn ghost auth-submit google-submit" onclick="signInGoogle()" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}><svg class="google-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 13.04a6.6 6.6 0 0 1-.34-2.04c0-.71.12-1.39.33-2.04V6.12H2.18a11 11 0 0 0 0 9.76l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.38 14.97 0 12 0 7.42 0 3.46 2.6 1.22 6.4l3.67 2.85C5.77 6.74 8.63 5.38 12 5.38z"/></svg>${AUTH.googleBusy ? "Abriendo Google…" : "Continuar con Google"}</button>` : ""}
   ${AUTH.mode === "login" || AUTH.mode === "signup" ? `<p class="auth-switch">${AUTH.mode === "signup" ? "¿Ya tienes cuenta?" : "¿Aún no tienes cuenta?"} <button class="auth-link" onclick="setAuthMode('${AUTH.mode === "signup" ? "login" : "signup"}')">${AUTH.mode === "signup" ? "Inicia sesión" : "Regístrate"}</button></p>` : ""}
   <p class="auth-privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.7 2.9 8.1 7 10 4.1-1.9 7-5.3 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>Tu cuenta mantiene tus ligas y pronósticos sincronizados.</p>
   <nav class="legal-links" aria-label="Información legal"><a href="/privacidad">Privacidad</a><a href="/aviso-legal">Aviso legal</a><a href="/cookies">Cookies</a><a href="/terminos">Términos</a><a href="/creditos">Créditos</a></nav>
@@ -3080,7 +3097,7 @@ const LEGAL_PAGES = {
   "/privacidad": {
     title: "Política de Privacidad",
     body: `<p><strong>Responsable del tratamiento:</strong> [COMPLETAR: nombre o razón social, NIF, domicilio y correo de contacto]. Esta ficha debe completarse antes de publicar PLENO; no se deben inventar datos del responsable.</p>
-      <h2>Datos tratados y finalidad</h2><p>PLENO trata el correo y el identificador de cuenta para autenticación; el nombre elegido, pertenencia a ligas, pronósticos, resultados y mensajes para prestar las funciones sociales y de juego recreativo; y la ruta de la foto opcional si la subes. Si participas en Juegos diarios, Supabase guarda tus intentos, puntuaciones, rachas e informes de errores asociados a tu cuenta y liga. El navegador puede guardar una copia del puzzle público para mostrarlo sin conexión; no contiene respuestas secretas. Supabase aloja autenticación y datos; Render aloja la aplicación. La API de football-data.org proporciona datos deportivos.</p>
+      <h2>Datos tratados y finalidad</h2><p>PLENO trata el correo y el identificador de cuenta para autenticación; el nombre elegido, pertenencia a ligas, pronósticos, resultados y mensajes para prestar las funciones sociales y de juego recreativo; y la ruta de la foto opcional si la subes. Al crear una cuenta se guarda también la fecha de tu confirmación de que tienes al menos 14 años. Si participas en Juegos diarios, Supabase guarda tus intentos, puntuaciones, rachas e informes de errores asociados a tu cuenta y liga. El navegador puede guardar una copia del puzzle público para mostrarlo sin conexión; no contiene respuestas secretas. Supabase aloja autenticación y datos; Render aloja la aplicación. La API de football-data.org proporciona datos deportivos.</p>
       <h2>Base jurídica, conservación y destinatarios</h2><p>La ejecución del servicio solicitado y, cuando corresponda, el consentimiento son las bases aplicables. Los datos se conservan mientras la cuenta esté activa y se suprimen o anonimizan al eliminarla, salvo conservación exigida por ley. No se venden datos. Las transferencias internacionales y garantías de los proveedores deben verificarse en sus contratos y configuración.</p>
       <h2>Derechos y contacto</h2><p>Puedes solicitar acceso, rectificación, supresión, limitación, oposición y portabilidad escribiendo a [COMPLETAR: correo de privacidad]. También puedes reclamar ante la Agencia Española de Protección de Datos. Puedes eliminar tu cuenta desde «Mi perfil».</p>
       <p><strong>Acción necesaria antes de producción:</strong> verificar y completar identidad y contacto del responsable, bases jurídicas, plazos, transferencias, encargados y procedimiento de derechos conforme a la operativa real.</p>`
