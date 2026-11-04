@@ -507,7 +507,7 @@ async function refreshLeagueScoreboards(leagueId = S.league?.id) {
     if (leagueId === S.league?.id) {
       const message = errorText(error);
       LEAGUE_SCORES.error = error?.code === "PGRST202" || error?.code === "42883"
-        ? `${message} · Ejecuta supabase-score-settlement.sql en Supabase.`
+        ? `${message} · En Supabase, ejecuta completo supabase-score-settlement.sql y luego pulsa Reintentar.`
         : message;
     }
     return false;

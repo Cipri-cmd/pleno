@@ -343,4 +343,6 @@ $$;
 revoke all on function public.get_league_scoreboards(uuid, smallint) from public, anon;
 grant execute on function public.get_league_scoreboards(uuid, smallint) to authenticated;
 
+notify pgrst, 'reload schema';
+
 commit;
