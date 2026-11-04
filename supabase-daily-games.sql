@@ -350,7 +350,7 @@ create or replace function public.get_daily_games_leaderboard(
   p_league_id uuid,
   p_period text
 )
-returns table(user_id uuid, display_name text, points bigint, games bigint, position bigint)
+returns table(user_id uuid, display_name text, points bigint, games bigint, rank_position bigint)
 language plpgsql
 stable
 security definer
