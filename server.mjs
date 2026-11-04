@@ -4,6 +4,7 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { publishDailyChallenge } from "./scripts/publish-daily-challenge.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const KEY = process.env.FOOTBALL_DATA_KEY;
@@ -14,8 +15,19 @@ const ALLOWED = /^(competitions\/PD\/(standings|matches|teams|scorers)|teams\/\d
 const types = { ".html": "text/html;charset=utf-8", ".css": "text/css;charset=utf-8", ".js": "text/javascript;charset=utf-8", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" };
 const cache = new Map();
 const inFlight = new Map();
+let dailyChallengeJob = { date: "", status: "idle", error: "" };
 let warnedMissingSupabase = false;
 const send = (res, code, body, headers = {}) => { res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store", ...headers }); res.end(body); };
+const madridDate = () => {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Europe/Madrid",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  const part = (type) => parts.find((item) => item.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+};
 const sendFootballData = (res, result) => send(res, result.status, result.body, result.updatedAt ? {
   "x-data-updated-at": new Date(result.updatedAt).toISOString(),
   "x-data-stale": String(result.stale)
@@ -85,6 +97,32 @@ async function syncMinuteOfGoldResults(matches) {
 http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://localhost");
   if (u.pathname.startsWith("/api/")) {
+    if (u.pathname === "/api/daily-challenge/ensure") {
+      if (req.method !== "POST") return send(res, 405, '{"message":"Método no permitido"}', { allow: "POST" });
+      if (!KEY || !SUPABASE_URL || !SUPABASE_SECRET_KEY) {
+        return send(res, 503, '{"message":"Falta configurar FOOTBALL_DATA_KEY, SUPABASE_URL o SUPABASE_SECRET_KEY"}');
+      }
+      const date = madridDate();
+      if (dailyChallengeJob.date !== date) dailyChallengeJob = { date, status: "idle", error: "" };
+      if (dailyChallengeJob.status === "idle") {
+        dailyChallengeJob.status = "running";
+        publishDailyChallenge({ apiKey: KEY, supabaseUrl: SUPABASE_URL, secretKey: SUPABASE_SECRET_KEY })
+          .then(() => { dailyChallengeJob.status = "complete"; })
+          .catch((error) => {
+            dailyChallengeJob.status = "failed";
+            dailyChallengeJob.error = error.message || String(error);
+            console.error(`No se pudo publicar el reto diario: ${dailyChallengeJob.error}`);
+          });
+      }
+      return send(res, 202, JSON.stringify({ date, status: dailyChallengeJob.status }));
+    }
+    if (u.pathname === "/api/daily-challenge/status") {
+      if (req.method !== "GET") return send(res, 405, '{"message":"Método no permitido"}', { allow: "GET" });
+      const date = u.searchParams.get("date");
+      if (!date || date !== madridDate()) return send(res, 400, '{"message":"Fecha del reto no válida"}');
+      const job = dailyChallengeJob.date === date ? dailyChallengeJob : { date, status: "idle", error: "" };
+      return send(res, 200, JSON.stringify(job));
+    }
     if (u.pathname === "/api/account") {
       if (req.method !== "DELETE") return send(res, 405, '{"message":"Método no permitido"}', { allow: "DELETE" });
       if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) return send(res, 503, '{"message":"El servicio de eliminación de cuentas no está configurado"}');

@@ -28,7 +28,7 @@ const LEAGUES = {
   items: [], loading: false, busy: false, error: "", warning: "",
   createName: "", leagueName: "", joinName: "", inviteCode: ""
 };
-const GAME = { loading: false, busy: false, spinning: false, spinStage: "", wheelRotation: 0, wheelResult: null, data: null, error: "", date: "" };
+const GAME = { loading: false, busy: false, spinning: false, spinStage: "", wheelRotation: 0, wheelResult: null, data: null, error: "", date: "", publicationRequestedDate: "", publicationTimer: null };
 const WHEEL_SECTIONS = [
   { type: "boots_gold", title: "Botas de Oro", subtitle: "+5 puntos" },
   { type: "joker_x2", title: "El Maletín", subtitle: "Joker x2" },
@@ -1520,9 +1520,52 @@ async function refreshScoutState(showError = true) {
       const sectionIndex = Number(data.spin.resolved_section_index || data.spin.section_index);
       GAME.wheelRotation = (330 - 60 * (sectionIndex - 1) + 360) % 360;
     }
-    GAME.error = data?.available
-      ? ""
-      : `No se ha publicado el reto del ${date}. Comprueba que el cron diario de Render esté activo y que se hayan aplicado los SQL de minijuegos y automatización.`;
+    GAME.error = data?.available ? "" : "Preparando el reto de hoy. Se elegirá un jugador nuevo y podrás jugar en cuanto se publique.";
+    if (!data?.available) {
+      if (GAME.publicationRequestedDate !== date) {
+        GAME.publicationRequestedDate = date;
+        fetch("/api/daily-challenge/ensure", { method: "POST" })
+          .then(async (response) => {
+            if (!response.ok) {
+              const payload = await response.json().catch(() => ({}));
+              throw new Error(payload.message || `Error ${response.status}`);
+            }
+          })
+          .catch((error) => {
+            if (GAME.date !== date) return;
+            GAME.error = `No se pudo preparar el reto diario: ${error.message || error}`;
+            if (GAME.publicationTimer) clearTimeout(GAME.publicationTimer);
+            GAME.publicationTimer = null;
+            if (V.tab === "g") render();
+          });
+      }
+      if (!GAME.publicationTimer) {
+        GAME.publicationTimer = setTimeout(async () => {
+          GAME.publicationTimer = null;
+          if (GAME.date !== date || V.tab !== "g") return;
+          try {
+            const response = await fetch(`/api/daily-challenge/status?date=${encodeURIComponent(date)}`);
+            const status = await response.json();
+            if (!response.ok) throw new Error(status.message || `Error ${response.status}`);
+            if (status.status === "failed") {
+              GAME.error = `No se pudo publicar el reto diario: ${status.error}`;
+              render();
+              return;
+            }
+            await refreshScoutState(false);
+            if (status.status === "complete" && !GAME.data?.available) {
+              if (GAME.publicationTimer) clearTimeout(GAME.publicationTimer);
+              GAME.publicationTimer = null;
+              GAME.error = "El reto se publicó, pero no se pudo cargar. Comprueba que supabase-minigames.sql esté aplicado en Supabase.";
+              render();
+            }
+          } catch (error) {
+            GAME.error = `No se pudo comprobar la publicación del reto: ${error.message || error}`;
+            render();
+          }
+        }, 10000);
+      }
+    }
   } catch (error) {
     if (date !== madridDate() || S.league?.id !== leagueId) return;
     const message = error.message || String(error);
@@ -1797,7 +1840,7 @@ function tJuego() {
   const inventoryPanel = `<section class="scout-panel scout-inventory-panel"><div class="scout-panel-head"><div><span class="scout-kicker">VENTAJAS PARA LA JORNADA</span><h2>Tu inventario</h2></div><span class="scout-inventory-count">${inventory.length} ${inventory.length === 1 ? "objeto" : "objetos"}</span></div><div class="scout-inventory-list">${inventoryMarkup}</div></section>`;
   const errorPanel = errorMessage ? `<div class="scout-error" role="alert">${errorMessage}</div>` : "";
   return `<section class="scout-shell">
-    <header class="scout-hero"><div><span class="scout-kicker">PLENO · RETOS DE LUNES A VIERNES</span><h1>Entre jornadas, <em>compites.</em></h1><p>Tres retos de fútbol. Puntos y ventajas que sí llegan a tu liga.</p><div class="scout-chips"><span>Jugador oculto</span><span>Ruleta con resultado seguro</span><span>Minuto exacto de gol</span></div></div><div class="scout-field" aria-hidden="true"><span>SCOUTING</span><i></i><b>90'</b></div></header>
+    <header class="scout-hero"><div><span class="scout-kicker">PLENO · RETOS DIARIOS</span><h1>Entre jornadas, <em>compites.</em></h1><p>Tres retos de fútbol. Puntos y ventajas que sí llegan a tu liga.</p><div class="scout-chips"><span>Jugador oculto</span><span>Ruleta con resultado seguro</span><span>Minuto exacto de gol</span></div></div><div class="scout-field" aria-hidden="true"><span>SCOUTING</span><i></i><b>90'</b></div></header>
     <p class="prediction-rule-note">Los pronósticos se pueden guardar o actualizar hasta una hora antes del partido. Al llegar a ese límite se bloquean también el Minuto de Oro, el Joker y la Tarjeta Roja.</p>
     ${errorPanel}
     <div class="scout-game-grid">${dailySection}${wheelSection}${minutePanel}${inventoryPanel}</div>

@@ -149,6 +149,25 @@ export async function publishDailyChallenge({
   }).formatToParts(now);
   const datePart = (type) => dateParts.find((part) => part.type === type)?.value;
   const challengeDate = `${datePart("year")}-${datePart("month")}-${datePart("day")}`;
+  const existingResponse = await fetch(
+    `${supabaseUrl.replace(/\/+$/, "")}/rest/v1/daily_challenges?challenge_date=eq.${challengeDate}&select=id&limit=1`,
+    {
+      headers: { apikey: secretKey, authorization: `****** },
+      signal: AbortSignal.timeout(15000)
+    }
+  );
+  if (!existingResponse.ok) {
+    throw new Error(`No se pudo comprobar el reto de hoy en Supabase: ${existingResponse.status} ${await existingResponse.text()}`);
+  }
+  const existingChallenges = await existingResponse.json();
+  if (!Array.isArray(existingChallenges)) {
+    throw new Error("Supabase devolvió una respuesta no válida al comprobar el reto de hoy.");
+  }
+  if (existingChallenges.length > 0) {
+    console.log(`El reto de ${challengeDate} ya está publicado.`);
+    return;
+  }
+
   const teams = await loadTeams(apiKey);
   const candidates = shuffle(buildCandidates(teams));
   if (candidates.length === 0) {
