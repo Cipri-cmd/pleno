@@ -743,9 +743,15 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
 .auth-card label.auth-consent{display:flex;align-items:flex-start;gap:10px;margin:12px 0;padding:11px 12px;border:1px solid #ffffff0d;border-radius:11px;background:#ffffff04;color:#a6a1a8;font-size:11px;font-weight:450;line-height:1.55;letter-spacing:0}
 .auth-consent span{flex:1;min-width:0}
 .auth-consent a{color:#55d6a5}
-.auth-consent input,.cookie-option input{width:17px;height:17px;flex:none;margin:1px 0;accent-color:var(--ac)}
+.auth-consent input,.cookie-option input{appearance:none;display:grid;width:18px;height:18px;flex:none;place-content:center;margin:0;border:1px solid #77808c;border-radius:5px;background:#111820;cursor:pointer}
+.auth-consent input:checked,.cookie-option input:checked{border-color:#10b981;background:#10b981}
+.auth-consent input:checked:after,.cookie-option input:checked:after{width:8px;height:5px;border:solid #07110e;border-width:0 0 2px 2px;content:"";transform:rotate(-45deg) translate(1px,-1px)}
+.auth-consent input:focus-visible,.cookie-option input:focus-visible{outline:2px solid #34d399;outline-offset:2px}
+.auth-card label.auth-consent{color:#e2e8f0}
 .auth-consent a,.legal-page a:not(.btn),.cookie-banner a{color:var(--ac);text-decoration:underline;text-underline-offset:3px}
 .auth-card .auth-consent a{color:#55d6a5}
+.auth-consent{box-sizing:border-box}
+.auth-card .auth-consent span{color:#e2e8f0}
 .auth-card .auth-divider{margin:17px 0 11px}
 .auth-card .auth-consent+.google-submit{margin-top:0}
 .legal-links{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 18px;margin:20px auto;color:var(--mu);font-size:12px}

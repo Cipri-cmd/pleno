@@ -1916,7 +1916,7 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
     <title id="auth-pitch-title">Pizarra táctica PLENO</title>
     <desc id="auth-pitch-description">Un campo de fútbol digital con jugadores en movimiento y una porra de dos a uno.</desc>
     <defs>
-      <clipPath id="auth-pitch-area"><rect x="43" y="45" width="554" height="238" rx="5"/></clipPath>
+      <clipPath id="auth-pitch-area" clipPathUnits="userSpaceOnUse"><rect x="43" y="45" width="554" height="238" rx="5"/></clipPath>
       <linearGradient id="auth-pitch-border" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff6a2a" stop-opacity=".55"/><stop offset=".52" stop-color="#ffffff" stop-opacity=".08"/><stop offset="1" stop-color="#f43f5e" stop-opacity=".32"/></linearGradient>
       <linearGradient id="auth-pitch-line" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff7438"/><stop offset="1" stop-color="#fb365c"/></linearGradient>
       <linearGradient id="auth-route" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffb454" stop-opacity=".15"/><stop offset=".55" stop-color="#ff7638"/><stop offset="1" stop-color="#ff3559"/></linearGradient>
@@ -1945,7 +1945,7 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
     <g transform="translate(276 167)"><g class="auth-player auth-player-g" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
     <g transform="translate(362 214)"><g class="auth-player auth-player-h" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
     <g transform="translate(511 189)"><g class="auth-player auth-player-i" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
-    <g class="auth-ball" clip-path="url(#auth-pitch-area)"><animateMotion dur="4.8s" repeatCount="indefinite" rotate="auto" path="M 280 165 C 294 145 311 143 328 163 S 360 187 378 164 S 410 142 430 164"/><circle r="7" fill="#fff8ef"/><path d="m-2.5-2 3-.8 2 2-1 3h-3l-1.4-2.5z" fill="#262229"/></g>
+    <g clip-path="url(#auth-pitch-area)"><g class="auth-ball"><animateMotion dur="4.8s" repeatCount="indefinite" rotate="auto" path="M 280 165 C 294 145 311 143 328 163 S 360 187 378 164 S 410 142 430 164"/><circle r="7" fill="#fff8ef"/><path d="m-2.5-2 3-.8 2 2-1 3h-3l-1.4-2.5z" fill="#262229"/></g></g>
     <g class="auth-scoreboard" transform="rotate(-4 487 89)">
       <rect x="408" y="53" width="158" height="73" rx="14" fill="#17161a" fill-opacity=".9" stroke="#ffffff" stroke-opacity=".18"/>
       <path d="M408 67h158" stroke="#ffffff" stroke-opacity=".08"/>
