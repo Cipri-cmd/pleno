@@ -1,6 +1,6 @@
 @import url('https://api.fontshare.com/v2/css?f[]=clash-display@200,300,400,500,600,700&display=swap');
 
-:root{--bg:#090d12;--s1:#111820;--s2:#18232d;--ln:#26343d;--tx:#f3f6f7;--mu:#94a3b8;--ac:#10b981;--ac2:#f5b942;--bt:#fff;--ok:#34d399;--bad:#f87171;--r:16px;
+:root{--bg:#090d12;--s1:#111820;--s2:#18232d;--ln:#26343d;--tx:#f3f6f7;--mu:#94a3b8;--ac:#FF5A3D;--ac2:#FFB52E;--bt:#fff;--ok:#34d399;--bad:#f87171;--r:16px;
   --g:linear-gradient(135deg,var(--ac),var(--ac2))}
 html[data-th=blanco]{--bg:#F2F4F7;--s1:#fff;--s2:#EDF0F4;--ln:#E1E5EB;--tx:#0E1116;--mu:#5F6877;--ac:#D8002D;--ac2:#FF7A00;color-scheme:light}
 html[data-th=medianoche]{--bg:#050B1A;--s1:#0B1530;--s2:#12204A;--ln:#1E2F63;--tx:#EAF1FF;--mu:#8CA0CC;--ac:#22D3EE;--ac2:#A78BFA;--bt:#00131A}
@@ -822,39 +822,39 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
   .top .bar .league-switcher-label{font-size:5px}
   .top .bar .league-switcher-copy>b{font-size:9px}
 }
-.auth-shell:before{background:radial-gradient(ellipse at 18% 44%,#10b98114,transparent 46%),radial-gradient(ellipse at 88% 18%,#34d3990a,transparent 34%),#090d12}
-.auth-brand-mark{filter:drop-shadow(0 0 15px #10b98138)}
-.auth-eyebrow{border-color:#34d39928;background:#10b9810c;color:#a7f3d0}
-.auth-eyebrow>span,.auth-live-dot{background:#34d399;box-shadow:0 0 10px #34d39980}
-.auth-brand h1 .auth-heading-accent{background:linear-gradient(100deg,#a7f3d0,#34d399 58%,#10b981);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 20px #10b98120)}
-.auth-pitch-wrap:after{background:#10b98130}
-.auth-home-field{width:min(100%,550px);aspect-ratio:1.68;margin:0 auto;overflow:hidden;border-color:#34d39955;background-color:#0b241e;transform:perspective(850px) rotateY(-7deg) rotateX(2deg)}
+.auth-shell:before{background:radial-gradient(ellipse at 18% 44%,#ff5a3d14,transparent 46%),radial-gradient(ellipse at 88% 18%,#ffb52e0a,transparent 34%),#090d12}
+.auth-brand-mark{filter:drop-shadow(0 0 15px #ff5a3d38)}
+.auth-eyebrow{border-color:#ffb52e28;background:#ff5a3d0c;color:#ffd8a0}
+.auth-eyebrow>span,.auth-live-dot{background:#ff7950;box-shadow:0 0 10px #ff673a80}
+.auth-brand h1 .auth-heading-accent{background:linear-gradient(100deg,#ffb578,#ff7545 58%,#f35a59);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 20px #ff5a3d20)}
+.auth-pitch-wrap:after{background:#ff5a3d30}
+.auth-home-field{width:min(100%,550px);aspect-ratio:1.68;margin:0 auto;overflow:hidden;border-color:#ffb52e55;background-color:#0b241e;transform:perspective(850px) rotateY(-7deg) rotateX(2deg)}
 .auth-home-field .field-label i{color:#6ee7b7}
-.auth-home-field .field-player{background:#10b981;box-shadow:0 2px 8px #0008,0 0 0 4px #10b9814a}
-.auth-home-field .field-player:after{border-color:#6ee7b799}
+.auth-home-field .field-player{background:#ff5a3d;box-shadow:0 2px 8px #0008,0 0 0 4px #ff5a3d4a}
+.auth-home-field .field-player:after{border-color:#ffb52e99}
 .auth-home-field .fp7{top:52%;left:18%}
 .auth-home-field .fp8{top:31%;left:53%}
 .auth-home-field .fp9{top:71%;left:48%}
 .auth-card.card{border-color:#ffffff12;background:linear-gradient(145deg,#161d20f5,#101619fa);box-shadow:0 26px 70px #0007,0 1px 0 #ffffff0b inset}
-.auth-card.card:before{background:conic-gradient(from 25deg,#ffffff10,#34d39945,#ffffff08,#10b98135,#ffffff10);animation-duration:9s}
-.auth-card.card:after{background:linear-gradient(90deg,transparent,#34d39955,transparent)}
-.auth-card-kicker>span{background:#10b981;box-shadow:0 0 10px #34d39988}
-.auth-card-index span{color:#34d399}
-.auth-card .auth-message{border-color:#34d39938;background:#10b9810e;color:#a7f3d0}
-.auth-card .auth-input-wrap input.t:focus{border-color:#34d399;background:#0d1414;box-shadow:0 0 0 3px #10b98120,0 0 16px #10b98118}
-.auth-input-wrap:focus-within .auth-input-icon{stroke:#6ee7b7}
-.auth-card .auth-link{color:#6ee7b7}
-.auth-card .auth-link:after{background:linear-gradient(90deg,#6ee7b7,#10b981)}
-.auth-card .auth-link:hover{color:#a7f3d0}
-.auth-card .auth-submit:not(.google-submit){border-color:#34d39966;background:linear-gradient(105deg,#059669,#10b981 55%,#34d399);box-shadow:0 8px 24px #10b98128,inset 0 1px 0 #ffffff42}
-.auth-card .auth-submit:not(.google-submit):not(:disabled):hover{box-shadow:0 10px 32px #10b98140,inset 0 1px 0 #ffffff55}
+.auth-card.card:before{background:conic-gradient(from 25deg,#ffffff10,#ffb52e45,#ffffff08,#ff5a3d35,#ffffff10);animation-duration:9s}
+.auth-card.card:after{background:linear-gradient(90deg,transparent,#ffb52e55,transparent)}
+.auth-card-kicker>span{background:#ff5a3d;box-shadow:0 0 10px #ff795088}
+.auth-card-index span{color:#ffb52e}
+.auth-card .auth-message{border-color:#ffb52e38;background:#ff5a3d0e;color:#ffd8a0}
+.auth-card .auth-input-wrap input.t:focus{border-color:#ff7950;background:#0d1414;box-shadow:0 0 0 3px #ff5a3d20,0 0 16px #ff5a3d18}
+.auth-input-wrap:focus-within .auth-input-icon{stroke:#ffb578}
+.auth-card .auth-link{color:#ffb578}
+.auth-card .auth-link:after{background:linear-gradient(90deg,#ffb578,#ff5a3d)}
+.auth-card .auth-link:hover{color:#ffd8a0}
+.auth-card .auth-submit:not(.google-submit){border-color:#ffb52e66;background:linear-gradient(105deg,#f35a3d,#ff7545 55%,#ffb52e);box-shadow:0 8px 24px #ff5a3d28,inset 0 1px 0 #ffffff42}
+.auth-card .auth-submit:not(.google-submit):not(:disabled):hover{box-shadow:0 10px 32px #ff5a3d40,inset 0 1px 0 #ffffff55}
 .auth-card .auth-submit:not(.google-submit):not(:disabled):active{transform:scale(.98)}
 .auth-card .google-submit{border-color:#ffffff20;background:#ffffff06}
 .auth-card .google-submit:hover:not(:disabled){border-color:#ffffff38;background:#ffffff0b}
 .auth-card .google-submit .google-mark{width:21px;height:21px}
-.auth-consent input:checked,.cookie-option input:checked{border-color:#10b981;background:#10b981}
-.auth-consent input:focus-visible,.cookie-option input:focus-visible{outline-color:#34d399}
-.auth-privacy svg{stroke:#6ee7b7}
+.auth-consent input:checked,.cookie-option input:checked{border-color:#ff5a3d;background:#ff5a3d}
+.auth-consent input:focus-visible,.cookie-option input:focus-visible{outline-color:#ffb52e}
+.auth-privacy svg{stroke:#ffb578}
 @media(prefers-reduced-motion:reduce){
   .auth-home-field,.auth-home-field .field-player,.auth-home-field .field-ball{animation:none!important;transform:none}
   .auth-card.card:before{animation:none}
