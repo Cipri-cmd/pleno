@@ -2,6 +2,9 @@ begin;
 
 alter table private.daily_challenge_answers
   add column if not exists source_player_id text;
+create index if not exists daily_challenge_answers_source_player
+  on private.daily_challenge_answers (source_player_id)
+  where source_player_id is not null;
 
 create or replace function public.publish_daily_challenge(
   p_challenge_date date,
@@ -19,7 +22,6 @@ set search_path = ''
 as $$
 declare
   existing_id uuid;
-  previous_player_id text;
   challenge_closes_at timestamptz;
 begin
   if auth.role() is distinct from 'service_role' then
@@ -49,12 +51,17 @@ begin
     return false;
   end if;
 
-  select answer.source_player_id into previous_player_id
-  from public.daily_challenges challenge
-  join private.daily_challenge_answers answer on answer.challenge_id = challenge.id
-  where challenge.challenge_date = p_challenge_date - 1;
-  if previous_player_id is not null and previous_player_id = p_source_player_id then
-    raise exception 'Player cannot repeat on consecutive days';
+  if exists (
+    select 1
+    from public.daily_challenges challenge
+    join private.daily_challenge_answers answer on answer.challenge_id = challenge.id
+    where challenge.challenge_date between p_challenge_date - 30 and p_challenge_date - 1
+      and (
+        answer.source_player_id = p_source_player_id
+        or answer.answer_normalized = lower(regexp_replace(btrim(p_answer_normalized), '\s+', ' ', 'g'))
+      )
+  ) then
+    raise exception 'Player used within the last 30 days';
   end if;
 
   challenge_closes_at :=

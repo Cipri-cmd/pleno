@@ -85,6 +85,51 @@ async function syncMinuteOfGoldResults(matches) {
 http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://localhost");
   if (u.pathname.startsWith("/api/")) {
+    if (u.pathname === "/api/account") {
+      if (req.method !== "DELETE") return send(res, 405, '{"message":"Método no permitido"}', { allow: "DELETE" });
+      if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) return send(res, 503, '{"message":"El servicio de eliminación de cuentas no está configurado"}');
+      const token = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || "")?.[1];
+      if (!token) return send(res, 401, '{"message":"Sesión no válida"}');
+      try {
+        const baseUrl = SUPABASE_URL.replace(/\/+$/, "");
+        const identityResponse = await fetch(`${baseUrl}/auth/v1/user`, {
+          headers: { apikey: SUPABASE_SECRET_KEY, authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(15000)
+        });
+        if (!identityResponse.ok) return send(res, 401, '{"message":"La sesión ha caducado. Inicia sesión de nuevo."}');
+        const identity = await identityResponse.json();
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identity.id || "")) {
+          return send(res, 401, '{"message":"No se pudo verificar la cuenta"}');
+        }
+        const storageResponse = await fetch(`${baseUrl}/storage/v1/object/room-avatars`, {
+          method: "POST",
+          headers: {
+            apikey: SUPABASE_SECRET_KEY,
+            authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ prefixes: [`${identity.id}/`] }),
+          signal: AbortSignal.timeout(15000)
+        });
+        if (!storageResponse.ok && storageResponse.status !== 404) {
+          const message = (await storageResponse.text()).slice(0, 300);
+          return send(res, 502, JSON.stringify({ message: `No se pudieron eliminar las fotos de perfil: ${message}` }));
+        }
+        const deletionResponse = await fetch(`${baseUrl}/auth/v1/admin/users/${identity.id}`, {
+          method: "DELETE",
+          headers: { apikey: SUPABASE_SECRET_KEY, authorization: `Bearer ${SUPABASE_SECRET_KEY}` },
+          signal: AbortSignal.timeout(15000)
+        });
+        if (!deletionResponse.ok) {
+          const message = (await deletionResponse.text()).slice(0, 300);
+          return send(res, 502, JSON.stringify({ message: `No se pudo eliminar la cuenta: ${message}` }));
+        }
+        return send(res, 200, '{"deleted":true}');
+      } catch (error) {
+        console.error(`Error al eliminar una cuenta de usuario: ${error.message}`);
+        return send(res, 502, '{"message":"No se pudo completar la eliminación por un error de conexión"}');
+      }
+    }
     const ep = u.pathname.slice(5);
     if (!ALLOWED.test(ep)) return send(res, 404, '{"message":"Ruta no permitida"}');
     if (!KEY) return send(res, 500, '{"message":"Falta FOOTBALL_DATA_KEY en el archivo .env"}');
@@ -121,7 +166,8 @@ http.createServer(async (req, res) => {
     }
     return sendFootballData(res, await request);
   }
-  const f = normalize(join(root, u.pathname === "/" ? "index.html" : u.pathname));
+  const legalRoutes = new Set(["/privacidad", "/aviso-legal", "/cookies", "/terminos"]);
+  const f = normalize(join(root, u.pathname === "/" || legalRoutes.has(u.pathname) ? "index.html" : u.pathname));
   if (!f.startsWith(root) || /server\.mjs|\.env/.test(f)) { res.writeHead(403); return res.end(); }
   try { const data = await readFile(f); res.writeHead(200, { "content-type": types[extname(f)] || "application/octet-stream" }); res.end(data); }
   catch { res.writeHead(404); res.end("No encontrado"); }

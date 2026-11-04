@@ -21,8 +21,8 @@ const D = { ready: false, err: null, matches: [], table: [], tH: [], tA: [], tea
 const AUTH = { client: null, session: null, ready: false, busy: false, googleBusy: false, syncing: false, minigameSyncing: false, mode: "login", email: "", password: "", error: "" };
 const LEAGUE_SCORES = { leagueId: null, seasonStartYear: null, season: [], rounds: {}, loading: false, error: "" };
 const ROOM = { loading: false, loaded: false, busy: false, archiving: false, error: "", archiveError: "", isAdmin: false, debts: [], chronicles: [], hallSeasons: [], dinnerLeaders: [], channel: null, leagueId: null, updatedAt: 0 };
-const CHAT = { loading: false, sending: false, uploadingAvatar: false, error: "", messages: [], avatars: {}, avatarPaths: {}, channel: null, channelLeagueId: null, loadedLeagueId: null, subscribed: false, input: "" };
-const PROFILE = { loading: false, error: "" };
+const CHAT = { loading: false, sending: false, uploadingAvatar: false, error: "", messages: [], avatars: {}, avatarPaths: {}, blockedUserIds: new Set(), channel: null, channelLeagueId: null, loadedLeagueId: null, subscribed: false, input: "" };
+const PROFILE = { loading: false, deleting: false, error: "" };
 const PREDICTION = { matchId: null, home: 0, away: 0, joker: false, returnFocus: null, error: "", saving: false, transitionId: null, previousJoker: null };
 const LEAGUES = {
   items: [], loading: false, busy: false, error: "", warning: "",
@@ -207,7 +207,14 @@ const toast = (m, type = "") => {
   toastTimeout = setTimeout(() => t.classList.remove("v"), 3200);
 };
 const fb = (i) => { i.outerHTML = `<span class="crest-fallback ${i.classList.contains("l") ? "l" : ""}">${esc(i.dataset.t)}</span>`; };
-const crest = (t, c = "") => `<img class="cr ${c}" src="${esc(t.crest)}" alt="" loading="lazy" data-t="${esc(t.tla || (t.name || "").slice(0, 3).toUpperCase())}" onerror="fb(this)">`;
+function DynamicImage(url, alt = "", className = "", kind = "player", fallbackText = "") {
+  const graphic = kind === "crest"
+    ? '<path d="M12 2 20 5v6c0 5-3.4 8.5-8 11-4.6-2.5-8-6-8-11V5l8-3Z"/><path d="M8 12h8"/>'
+    : '<circle cx="12" cy="8" r="3.5"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/>';
+  const placeholder = `<span class="dynamic-image-placeholder" aria-hidden="true">${fallbackText ? `<b>${esc(fallbackText)}</b>` : `<svg viewBox="0 0 24 24">${graphic}</svg>`}</span>`;
+  return `<span class="dynamic-image ${esc(className)} ${url ? "is-loading" : "is-fallback"}">${url ? `<span class="dynamic-image-skeleton" aria-hidden="true"></span><img src="${esc(url)}" alt="${esc(alt)}" loading="lazy" onload="this.parentElement.classList.remove('is-loading')" onerror="this.parentElement.classList.remove('is-loading');this.parentElement.classList.add('is-fallback');this.remove()">` : ""}${placeholder}</span>`;
+}
+const crest = (t, c = "") => DynamicImage(t.crest, "", `cr ${c}`, "crest", t.tla || (t.name || "").slice(0, 3).toUpperCase());
 const clubName = (t) => t.name || t.shortName || "Club";
 const nm = (t) => esc(clubName(t));
 const fmtD = (d) => new Intl.DateTimeFormat("es-ES", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Madrid" }).format(new Date(d));
@@ -631,6 +638,11 @@ async function handleAuthSession(session) {
   AUTH.ready = true;
   AUTH.userId = userId;
   AUTH.error = "";
+  let consentError = "";
+  if (session && previousId !== userId) {
+    try { await persistOAuthLegalConsent(); }
+    catch (error) { consentError = errorText(error); }
+  }
   if (previousId !== userId) {
     V.profileOpen = false;
     V.profileNeedsFocus = false;
@@ -639,6 +651,11 @@ async function handleAuthSession(session) {
     PROFILE.loading = false;
     PROFILE.error = "";
     resetLeagueState();
+    CHAT.messages = [];
+    CHAT.blockedUserIds = new Set();
+    CHAT.avatars = {};
+    CHAT.avatarPaths = {};
+    CHAT.loadedLeagueId = null;
     GAME.data = null;
     GAME.score = 0;
     GAME.leaderboard = [];
@@ -657,23 +674,67 @@ async function handleAuthSession(session) {
     V.instructionsNeedsFocus = false;
     resetLeagueState();
   }
+  if (consentError) {
+    AUTH.error = `Se inició sesión, pero no se pudo guardar la aceptación de términos: ${consentError}`;
+    toast(AUTH.error, "error");
+  }
   render();
   if (session && S.league?.id) refreshMinigameScoreData(false);
 }
+async function persistOAuthLegalConsent() {
+  const consentKey = "pleno:google-terms-consent:v1";
+  const acceptedAt = sessionStorage.getItem(consentKey);
+  if (!acceptedAt || !AUTH.session || !AUTH.client) return;
+  const { error } = await AUTH.client.from("user_legal_consents").upsert({
+    user_id: AUTH.session.user.id,
+    terms_version: "1.0",
+    accepted_at: acceptedAt
+  }, { onConflict: "user_id", ignoreDuplicates: true });
+  if (error) throw error;
+  sessionStorage.removeItem(consentKey);
+}
+function authRedirectUrl() {
+  return new URL("/", window.location.origin).toString();
+}
+function friendlyAuthError(error) {
+  const message = errorText(error);
+  if (/pkce|code verifier|code challenge|flow_state_not_found|invalid_grant/i.test(message)) return "No se pudo validar la sesión segura de Google. Vuelve a iniciar sesión desde esta página.";
+  if (/expired|token.*(invalid|expired)|refresh token/i.test(message)) return "La sesión ha caducado. Inicia sesión de nuevo.";
+  if (/popup|blocked/i.test(message)) return "El navegador bloqueó la ventana de autenticación. Permite la redirección y vuelve a intentarlo.";
+  if (/access_denied|user_cancelled|canceled/i.test(message)) return "Se canceló el inicio de sesión con Google.";
+  return message;
+}
 async function initializeAuth() {
+  const callbackParams = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const callbackError = new URLSearchParams(location.search).get("error_description")
+    || callbackParams.get("error_description")
+    || new URLSearchParams(location.search).get("error")
+    || callbackParams.get("error");
   try {
     const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm");
-    AUTH.client = createClient(SB_URL, SB_KEY);
+    AUTH.client = createClient(SB_URL, SB_KEY, {
+      auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true }
+    });
     AUTH.client.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") AUTH.mode = "update";
+      if (event === "TOKEN_REFRESHED" && session?.user?.id === AUTH.userId) {
+        AUTH.session = session;
+        return;
+      }
       setTimeout(() => handleAuthSession(session), 0);
     });
     const { data, error } = await AUTH.client.auth.getSession();
     if (error) throw error;
     await handleAuthSession(data.session);
+    if (callbackError) {
+      AUTH.error = friendlyAuthError(new Error(callbackError));
+      render();
+      toast(AUTH.error, "error");
+    }
   } catch (e) {
     AUTH.ready = true;
-    AUTH.error = `No se pudo conectar con Supabase: ${e.message}`;
+    AUTH.error = `No se pudo conectar con Supabase: ${friendlyAuthError(e)}`;
+    if (callbackError || location.search.includes("code=") || location.hash.includes("access_token=")) toast(AUTH.error, "error");
     render();
   }
 }
@@ -697,6 +758,7 @@ async function submitAuth() {
   const email = $("#auth-email")?.value.trim() || "";
   const password = $("#auth-password")?.value || "";
   if (!email || !password) return toast("Escribe tu correo y contraseña");
+  if (AUTH.mode === "signup" && !$("#auth-terms")?.checked) return toast("Debes aceptar los Términos de Uso y la Política de Privacidad.", "error");
   if (password.length < 6) return toast("La contraseña debe tener al menos 6 caracteres");
   AUTH.email = email;
   AUTH.password = password;
@@ -705,7 +767,14 @@ async function submitAuth() {
   render();
   try {
     const result = AUTH.mode === "signup"
-      ? await AUTH.client.auth.signUp({ email, password, options: { emailRedirectTo: location.origin } })
+      ? await AUTH.client.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: authRedirectUrl(),
+          data: { terms_version: "1.0", terms_accepted_at: new Date().toISOString() }
+        }
+      })
       : await AUTH.client.auth.signInWithPassword({ email, password });
     if (result.error) throw result.error;
     if (AUTH.mode === "signup" && !result.data.session) {
@@ -723,7 +792,7 @@ async function submitAuth() {
     AUTH.busy = false;
     const invalidCredentials = AUTH.mode === "login" &&
       (e?.code === "invalid_credentials" || /invalid login credentials/i.test(errorText(e)));
-    AUTH.error = invalidCredentials ? "" : e.message;
+    AUTH.error = invalidCredentials ? "" : friendlyAuthError(e);
     render();
     if (invalidCredentials) toast("Credenciales incorrectas", "error");
   }
@@ -731,18 +800,24 @@ async function submitAuth() {
 async function signInGoogle() {
   if (!AUTH.client) return toast("La conexión de Supabase todavía no está lista");
   if (AUTH.busy || AUTH.googleBusy) return;
+  if (!$("#oauth-terms")?.checked) return toast("Acepta los Términos de Uso y la Política de Privacidad para continuar con Google.", "error");
   AUTH.googleBusy = true;
   AUTH.error = "";
   render();
   try {
+    try { sessionStorage.setItem("pleno:google-terms-consent:v1", new Date().toISOString()); }
+    catch { throw new Error("El navegador no permite guardar la aceptación requerida para el registro con Google."); }
     const { error } = await AUTH.client.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: location.origin }
+      options: { redirectTo: authRedirectUrl() }
     });
     if (error) throw error;
   } catch (error) {
-    AUTH.error = `No se pudo iniciar con Google: ${errorText(error)}. Comprueba que el proveedor Google esté configurado en Supabase.`;
+    try { sessionStorage.removeItem("pleno:google-terms-consent:v1"); }
+    catch (storageError) { console.warn(`No se pudo limpiar la aceptación temporal de Google: ${errorText(storageError)}`); }
+    AUTH.error = `No se pudo iniciar con Google: ${friendlyAuthError(error)}. Comprueba que el proveedor Google esté configurado en Supabase.`;
     render();
+    toast(AUTH.error, "error");
   } finally {
     AUTH.googleBusy = false;
     render();
@@ -751,8 +826,8 @@ async function signInGoogle() {
 async function resetPassword() {
   const email = $("#auth-email")?.value.trim() || AUTH.email;
   if (!email) return toast("Escribe primero tu correo");
-  const { error } = await AUTH.client.auth.resetPasswordForEmail(email, { redirectTo: location.origin });
-  if (error) { AUTH.error = error.message; render(); return; }
+  const { error } = await AUTH.client.auth.resetPasswordForEmail(email, { redirectTo: authRedirectUrl() });
+  if (error) { AUTH.error = friendlyAuthError(error); render(); return; }
   AUTH.error = "Si existe una cuenta con ese correo, recibirás un enlace para cambiar la contraseña.";
   render();
 }
@@ -954,13 +1029,19 @@ async function loadRoomChat(force = false) {
       });
   }
   try {
-    const { data, error } = await AUTH.client.from("room_messages")
+    const [{ data, error }, { data: blocks, error: blocksError }] = await Promise.all([
+      AUTH.client.from("room_messages")
       .select("id,room_id,user_id,message,created_at")
       .eq("room_id", roomId)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
-      .limit(100);
+      .limit(100),
+      AUTH.client.from("room_user_blocks").select("blocked_user_id")
+        .eq("blocker_user_id", AUTH.session.user.id)
+    ]);
     if (error) throw error;
+    if (blocksError) throw blocksError;
+    CHAT.blockedUserIds = new Set((blocks || []).map((item) => item.blocked_user_id));
     const newest = new Map((data || []).map((item) => [item.id, item]));
     for (const item of CHAT.messages) newest.set(item.id, item);
     CHAT.messages = [...newest.values()]
@@ -985,7 +1066,7 @@ function scrollRoomChatToBottom() {
 function chatAvatar(userId, name, className = "") {
   const initials = [...String(name || "?").trim()].slice(0, 2).join("").toUpperCase();
   const source = CHAT.avatars[userId];
-  return `<span class="room-avatar ${className}">${source ? `<img src="${esc(source)}" alt="" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false">` : ""}<span ${source ? "hidden" : ""}>${esc(initials || "?")}</span></span>`;
+  return DynamicImage(source, "", `room-avatar ${className}`, "player", initials || "?");
 }
 async function prepareAvatar(file) {
   if (!file.type.startsWith("image/")) throw new Error("Selecciona un archivo de imagen.");
@@ -1070,6 +1151,23 @@ function openProfile() {
   PROFILE.error = "";
   render();
   loadOwnProfilePhoto();
+  loadBlockedUsers();
+}
+async function loadBlockedUsers() {
+  if (!AUTH.client || !AUTH.session) return;
+  const userId = AUTH.session.user.id;
+  try {
+    const { data, error } = await AUTH.client.from("room_user_blocks")
+      .select("blocked_user_id")
+      .eq("blocker_user_id", userId);
+    if (error) throw error;
+    if (AUTH.session?.user?.id !== userId) return;
+    CHAT.blockedUserIds = new Set((data || []).map((item) => item.blocked_user_id));
+    if (V.profileOpen) render();
+  } catch (error) {
+    PROFILE.error = `No se pudieron cargar los usuarios bloqueados: ${errorText(error)}`;
+    if (V.profileOpen) render();
+  }
 }
 function closeProfile() {
   if (!V.profileOpen) return;
@@ -1082,6 +1180,32 @@ function closeProfile() {
       : document.querySelector(".profile-button");
     target?.focus();
   });
+}
+async function deleteMyAccount() {
+  if (!AUTH.session || PROFILE.deleting) return;
+  const confirmed = window.confirm("Esta acción es irreversible. Se eliminarán tu cuenta y los datos asociados (pronósticos, mensajes y perfil). ¿Quieres continuar?");
+  if (!confirmed) return;
+  PROFILE.deleting = true;
+  PROFILE.error = "";
+  render();
+  try {
+    const response = await fetch("/api/account", {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${AUTH.session.access_token}` }
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || `Error del servidor (${response.status})`);
+    const { error } = await AUTH.client.auth.signOut({ scope: "local" });
+    if (error) throw error;
+    await handleAuthSession(null);
+    toast("Tu cuenta y los datos asociados se han eliminado.");
+  } catch (error) {
+    PROFILE.error = errorText(error);
+    toast(`No se pudo eliminar la cuenta: ${PROFILE.error}`, "error");
+  } finally {
+    PROFILE.deleting = false;
+    if (V.profileOpen) render();
+  }
 }
 async function loadOwnProfilePhoto() {
   const userId = AUTH.session?.user?.id;
@@ -1191,22 +1315,73 @@ async function sendRoomMessage(event) {
     if (V.tab === "l") render();
   }
 }
+async function reportRoomMessage(messageId, userId) {
+  if (!AUTH.client || !S.league?.id || !messageId || userId === AUTH.session?.user?.id) return;
+  const reason = window.prompt("¿Por qué quieres reportar este mensaje? (máx. 200 caracteres)", "Contenido inapropiado");
+  if (reason === null) return;
+  const cleanReason = reason.trim().slice(0, 200);
+  if (!cleanReason) return toast("Indica un motivo para el reporte.", "error");
+  try {
+    const { error } = await AUTH.client.from("room_message_reports").insert({
+      message_id: messageId,
+      room_id: S.league.id,
+      reporter_user_id: AUTH.session.user.id,
+      reported_user_id: userId,
+      reason: cleanReason
+    });
+    if (error) throw error;
+    toast("Reporte enviado al equipo de moderación.");
+  } catch (error) {
+    toast(`No se pudo reportar el mensaje: ${errorText(error)}`, "error");
+  }
+}
+async function blockChatUser(userId) {
+  if (!AUTH.client || !userId || userId === AUTH.session?.user?.id) return;
+  if (!window.confirm("¿Bloquear a este usuario? Sus mensajes dejarán de aparecer en tu chat.")) return;
+  try {
+    const { error } = await AUTH.client.from("room_user_blocks").insert({
+      blocker_user_id: AUTH.session.user.id,
+      blocked_user_id: userId
+    });
+    if (error && error.code !== "23505") throw error;
+    CHAT.blockedUserIds.add(userId);
+    render();
+    toast("Usuario bloqueado. Puedes desbloquearlo desde el perfil.");
+  } catch (error) {
+    toast(`No se pudo bloquear al usuario: ${errorText(error)}`, "error");
+  }
+}
+async function unblockChatUser(userId) {
+  if (!AUTH.client || !userId) return;
+  try {
+    const { error } = await AUTH.client.from("room_user_blocks").delete()
+      .eq("blocker_user_id", AUTH.session.user.id)
+      .eq("blocked_user_id", userId);
+    if (error) throw error;
+    CHAT.blockedUserIds.delete(userId);
+    await loadRoomChat(true);
+    toast("Usuario desbloqueado.");
+  } catch (error) {
+    toast(`No se pudo desbloquear al usuario: ${errorText(error)}`, "error");
+  }
+}
 function roomChat() {
   if (CHAT.loadedLeagueId !== S.league?.id && !CHAT.loading) queueMicrotask(() => loadRoomChat());
   const names = new Map([
     [AUTH.session?.user?.id, S.me || "Tú"],
     ...Object.entries(S.friends).map(([id, member]) => [id, member.n])
   ]);
-  const messages = CHAT.messages.map((item) => {
+  const messages = CHAT.messages.filter((item) => !CHAT.blockedUserIds.has(item.user_id)).map((item) => {
     const mine = item.user_id === AUTH.session?.user?.id;
     const stamp = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit" }).format(new Date(item.created_at));
     const name = names.get(item.user_id) || "Jugador";
-    return `<article class="room-chat-row ${mine ? "is-mine" : ""}">${!mine ? chatAvatar(item.user_id, name) : ""}<div class="room-chat-bubble">${!mine ? `<b>${esc(name)}</b>` : ""}<p>${esc(item.message)}</p><time datetime="${esc(item.created_at)}">${stamp}</time></div>${mine ? chatAvatar(item.user_id, name) : ""}</article>`;
+    const moderation = mine ? "" : `<div class="room-chat-moderation"><button type="button" onclick="reportRoomMessage('${esc(item.id)}','${esc(item.user_id)}')">Reportar</button><button type="button" onclick="blockChatUser('${esc(item.user_id)}')">Bloquear</button></div>`;
+    return `<article class="room-chat-row ${mine ? "is-mine" : ""}">${!mine ? chatAvatar(item.user_id, name) : ""}<div class="room-chat-bubble">${!mine ? `<b>${esc(name)}</b>` : ""}<p>${esc(item.message)}</p><time datetime="${esc(item.created_at)}">${stamp}</time>${moderation}</div>${mine ? chatAvatar(item.user_id, name) : ""}</article>`;
   }).join("");
   const quickEmojis = ["⚽", "😂", "😭", "🔥", "👀", "🫡"].map((emoji) =>
     `<button type="button" class="room-chat-emoji" onclick="appendChatEmoji('${emoji}')" aria-label="Añadir emoji ${emoji}">${emoji}</button>`
   ).join("");
-  return `<section class="room-chat card" aria-label="Chat de la liga"><header class="room-chat-heading"><div><span class="round-kicker">EN DIRECTO CON TU LIGA</span><h2>El Vestuario</h2></div><span class="room-chat-live"><i></i>EN VIVO</span><button class="league-copy-button" type="button" onclick="loadRoomChat(true)" ${CHAT.loading ? "disabled" : ""}>Actualizar</button></header>${CHAT.error ? `<p class="room-chat-error" role="status">${esc(CHAT.error)}</p>` : ""}<div class="room-chat-messages" role="log" aria-live="polite" aria-relevant="additions text">${messages || (CHAT.loading ? '<p class="room-chat-empty">Cargando conversación…</p>' : '<p class="room-chat-empty">Aún no hay mensajes. Rompe el hielo con una porra ⚽</p>')}</div><div class="room-chat-tools" aria-label="Emojis rápidos">${quickEmojis}</div><form class="room-chat-compose" onsubmit="sendRoomMessage(event)"><label class="sr-only" for="room-chat-input">Escribe un mensaje para la liga</label><textarea id="room-chat-input" name="message" rows="1" maxlength="500" required placeholder="Escribe al vestuario…" oninput="CHAT.input=this.value" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.form.requestSubmit()}" ${CHAT.sending ? "disabled" : ""}>${esc(CHAT.input)}</textarea><button class="btn room-chat-send" type="submit" aria-label="Enviar mensaje" ${CHAT.sending ? "disabled" : ""}>${CHAT.sending ? "…" : "Enviar"}</button></form><p class="room-chat-hint">Enter para enviar · Mayús + Enter para nueva línea · máx. 500 caracteres</p></section>`;
+  return `<section class="room-chat card" aria-label="Chat de la liga"><header class="room-chat-heading"><div><span class="round-kicker">EN DIRECTO CON TU LIGA</span><h2>El Vestuario</h2></div><span class="room-chat-live"><i></i>EN VIVO</span><button class="league-copy-button" type="button" onclick="loadRoomChat(true)" ${CHAT.loading ? "disabled" : ""}>Actualizar</button></header>${CHAT.error ? `<p class="room-chat-error" role="status">${esc(CHAT.error)}</p>` : ""}<div class="room-chat-messages" role="log" aria-live="polite" aria-relevant="additions text">${messages || (CHAT.loading ? '<div class="room-chat-skeleton" aria-label="Cargando mensajes"><i></i><i></i><i></i></div>' : '<p class="room-chat-empty">Aún no hay mensajes. Rompe el hielo con una porra ⚽</p>')}</div><div class="room-chat-tools" aria-label="Emojis rápidos">${quickEmojis}</div><form class="room-chat-compose" onsubmit="sendRoomMessage(event)"><label class="sr-only" for="room-chat-input">Escribe un mensaje para la liga</label><textarea id="room-chat-input" name="message" rows="1" maxlength="500" required placeholder="Escribe al vestuario…" oninput="CHAT.input=this.value" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.form.requestSubmit()}" ${CHAT.sending ? "disabled" : ""}>${esc(CHAT.input)}</textarea><button class="btn room-chat-send" type="submit" aria-label="Enviar mensaje" ${CHAT.sending ? "disabled" : ""}>${CHAT.sending ? "…" : "Enviar"}</button></form><p class="room-chat-hint">Enter para enviar · Mayús + Enter para nueva línea · máx. 500 caracteres</p></section>`;
 }
 async function createRoomDebt(event) {
   event.preventDefault();
@@ -1649,11 +1824,11 @@ function profileModal() {
   const source = CHAT.avatars[userId];
   const profileBusy = CHAT.uploadingAvatar || PROFILE.loading;
   const initials = [...String(S.me || AUTH.session.user.email || "Tú").trim()].slice(0, 2).join("").toUpperCase();
-  const image = source
-    ? `<img src="${esc(source)}" alt="Foto de perfil de ${esc(S.me || "tu cuenta")}">`
-    : `<span class="profile-photo-placeholder">${esc(initials || "?")}</span>`;
+  const image = DynamicImage(source, `Foto de perfil de ${S.me || "tu cuenta"}`, "profile-photo-image", "player", initials || "?");
   const uploadLabel = source ? "Cambiar foto" : "Añadir foto";
-  return `<div class="instructions-overlay profile-overlay" role="presentation" onclick="if(event.target===this)closeProfile()"><section class="instructions-dialog profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TU CUENTA · PLENO</span><h2 id="profile-title">Mi perfil</h2><p>${esc(S.me || AUTH.session.user.email || "Jugador")}</p></div><button class="instructions-close profile-close" type="button" onclick="closeProfile()" aria-label="Cerrar perfil">×</button></header><div class="profile-photo-stage">${image}</div>${PROFILE.loading ? '<p class="profile-status" role="status">Cargando foto de perfil…</p>' : ""}${PROFILE.error ? `<p class="profile-error" role="alert">No se pudo completar la acción: ${esc(PROFILE.error)}</p>` : ""}<div class="profile-actions"><label class="btn profile-upload ${profileBusy || !S.league?.id ? "is-disabled" : ""}">${CHAT.uploadingAvatar ? "Guardando…" : uploadLabel}<input type="file" accept="image/*" onchange="uploadProfilePhoto(event)" ${profileBusy || !S.league?.id ? "disabled" : ""}></label>${source ? `<button class="btn ghost profile-remove" type="button" onclick="removeProfilePhoto()" ${profileBusy ? "disabled" : ""}>Quitar foto</button>` : ""}</div>${!S.league?.id ? '<p class="profile-hint">Únete a una liga para añadir una foto de perfil.</p>' : ""}</section></div>`;
+  const memberNames = new Map(Object.entries(S.friends).map(([id, member]) => [id, member.n]));
+  const blockedUsers = [...CHAT.blockedUserIds].map((id) => `<li><span>${esc(memberNames.get(id) || "Jugador")}</span><button type="button" onclick="unblockChatUser('${esc(id)}')">Desbloquear</button></li>`).join("");
+  return `<div class="instructions-overlay profile-overlay" role="presentation" onclick="if(event.target===this)closeProfile()"><section class="instructions-dialog profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TU CUENTA · PLENO</span><h2 id="profile-title">Mi perfil</h2><p>${esc(S.me || AUTH.session.user.email || "Jugador")}</p></div><button class="instructions-close profile-close" type="button" onclick="closeProfile()" aria-label="Cerrar perfil">×</button></header><div class="profile-photo-stage">${image}</div>${PROFILE.loading ? '<p class="profile-status" role="status">Cargando foto de perfil…</p>' : ""}${PROFILE.error ? `<p class="profile-error" role="alert">No se pudo completar la acción: ${esc(PROFILE.error)}</p>` : ""}<div class="profile-actions"><label class="btn profile-upload ${profileBusy || !S.league?.id ? "is-disabled" : ""}">${CHAT.uploadingAvatar ? "Guardando…" : uploadLabel}<input type="file" accept="image/*" onchange="uploadProfilePhoto(event)" ${profileBusy || !S.league?.id ? "disabled" : ""}></label>${source ? `<button class="btn ghost profile-remove" type="button" onclick="removeProfilePhoto()" ${profileBusy ? "disabled" : ""}>Quitar foto</button>` : ""}</div>${!S.league?.id ? '<p class="profile-hint">Únete a una liga para añadir una foto de perfil.</p>' : ""}<section class="profile-blocked"><h3>Usuarios bloqueados</h3>${blockedUsers ? `<ul>${blockedUsers}</ul>` : '<p>No has bloqueado a nadie.</p>'}</section><button class="btn profile-delete-account" type="button" onclick="deleteMyAccount()" ${PROFILE.deleting ? "disabled" : ""}>${PROFILE.deleting ? "Eliminando cuenta…" : "Eliminar mi cuenta y datos"}</button><p class="profile-hint">La eliminación es irreversible e incluye los datos asociados a tu cuenta.</p></section></div>`;
 }
 function leaguePickerModal() {
   if (!V.leaguePickerOpen || !AUTH.session) return "";
@@ -1794,11 +1969,13 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
     <label for="auth-password">${AUTH.mode === "update" ? "NUEVA CONTRASEÑA" : "CONTRASEÑA"}</label>
     <div class="auth-input-wrap auth-password-field"><svg class="auth-input-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input class="t" id="auth-password" type="password" autocomplete="${AUTH.mode === "signup" || AUTH.mode === "update" ? "new-password" : "current-password"}" minlength="6" required value="${esc(AUTH.password)}" placeholder="Al menos 6 caracteres"><button class="password-visibility" type="button" onclick="togglePasswordVisibility(this)" aria-label="Mostrar contraseña" aria-pressed="false" title="Mostrar contraseña"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/><path class="password-eye-slash" d="m4 4 16 16"/></svg></button></div>
     ${AUTH.mode === "login" ? `<div class="auth-forgot-row"><button class="auth-link" type="button" onclick="resetPassword()">¿Olvidaste la contraseña?</button></div>` : ""}
+    ${AUTH.mode === "signup" ? '<label class="auth-consent"><input id="auth-terms" type="checkbox" required><span>Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos de Uso</a> y la <a href="/privacidad" target="_blank" rel="noopener">Política de Privacidad</a>.</span></label>' : ""}
     <button class="btn auth-submit" type="submit" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}>${AUTH.busy ? '<svg class="auth-spinner" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity=".28" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>Entrando…' : AUTH.mode === "signup" ? "Crear cuenta" : AUTH.mode === "update" ? "Guardar contraseña" : 'Entrar <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>'}</button>
   </form>
-  ${AUTH.mode === "login" ? `<div class="auth-divider"><span>O CONTINÚA CON</span></div><button class="btn ghost auth-submit google-submit" onclick="signInGoogle()" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}><svg class="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#34A853" d="M6.3 14.7l6.6 4.8C14.5 15.1 18.9 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#FBBC05" d="M24 44c5.2 0 9.9-1.7 13.2-4.6l-6.1-5.2c-1.7 1.2-4.2 2-7.1 2-5.3 0-9.7-3.3-11.3-7.9l-6.6 5.1C9.4 39.6 16.1 44 24 44z"/><path fill="#EA4335" d="M6.3 14.7C4.8 17.4 4 20.6 4 24s.8 6.6 2.3 9.3l6.6-5.1c-.6-1.3-.9-2.7-.9-4.2s.3-2.9.9-4.2z"/></svg>${AUTH.googleBusy ? "Abriendo Google…" : "Continuar con Google"}</button>` : ""}
+  ${AUTH.mode === "login" ? `<div class="auth-divider"><span>O CONTINÚA CON</span></div><label class="auth-consent"><input id="oauth-terms" type="checkbox" required><span>Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos de Uso</a> y la <a href="/privacidad" target="_blank" rel="noopener">Política de Privacidad</a>.</span></label><button class="btn ghost auth-submit google-submit" onclick="signInGoogle()" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}><svg class="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#34A853" d="M6.3 14.7l6.6 4.8C14.5 15.1 18.9 12 24 12c3.1 0 5.9 1.2 8.1 3.1l5.7-5.7C34.1 5.8 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#FBBC05" d="M24 44c5.2 0 9.9-1.7 13.2-4.6l-6.1-5.2c-1.7 1.2-4.2 2-7.1 2-5.3 0-9.7-3.3-11.3-7.9l-6.6 5.1C9.4 39.6 16.1 44 24 44z"/><path fill="#EA4335" d="M6.3 14.7C4.8 17.4 4 20.6 4 24s.8 6.6 2.3 9.3l6.6-5.1c-.6-1.3-.9-2.7-.9-4.2s.3-2.9.9-4.2z"/></svg>${AUTH.googleBusy ? "Abriendo Google…" : "Continuar con Google"}</button>` : ""}
   ${AUTH.mode === "login" || AUTH.mode === "signup" ? `<p class="auth-switch">${AUTH.mode === "signup" ? "¿Ya tienes cuenta?" : "¿Aún no tienes cuenta?"} <button class="auth-link" onclick="setAuthMode('${AUTH.mode === "signup" ? "login" : "signup"}')">${AUTH.mode === "signup" ? "Inicia sesión" : "Regístrate"}</button></p>` : ""}
   <p class="auth-privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.7 2.9 8.1 7 10 4.1-1.9 7-5.3 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>Tu cuenta mantiene tus ligas y pronósticos sincronizados.</p>
+  <nav class="legal-links" aria-label="Información legal"><a href="/privacidad">Privacidad</a><a href="/aviso-legal">Aviso legal</a><a href="/cookies">Cookies</a><a href="/terminos">Términos</a></nav>
   </section></div>`;
 const leagueGate = () => `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><span class="sp"></span><div class="top-actions">${infoButton()}<button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div></div><main class="league-gate">
 <section class="hero" aria-labelledby="league-gate-title"><span class="league-gate-kicker">PLENO <i></i> LA PORRA DE LALIGA</span><h1 id="league-gate-title">Acierta el marcador.<br>Gana a tus amigos.</h1><p>Pronostica antes del pitido y suma puntos con cada partido.</p></section>
@@ -2445,8 +2622,82 @@ function switchTab(tab) {
     }, { once: true });
   });
 }
+const LEGAL_PAGES = {
+  "/privacidad": {
+    title: "Política de Privacidad",
+    body: `<p><strong>Responsable del tratamiento:</strong> [COMPLETAR: nombre o razón social, NIF, domicilio y correo de contacto]. Esta ficha debe completarse antes de publicar PLENO; no se deben inventar datos del responsable.</p>
+      <h2>Datos tratados y finalidad</h2><p>PLENO trata el correo y el identificador de cuenta para autenticación; el nombre elegido, pertenencia a ligas, pronósticos, resultados y mensajes para prestar las funciones sociales y de juego recreativo; y la ruta de la foto opcional si la subes. Supabase aloja autenticación y datos; Render aloja la aplicación. La API de football-data.org proporciona datos deportivos.</p>
+      <h2>Base jurídica, conservación y destinatarios</h2><p>La ejecución del servicio solicitado y, cuando corresponda, el consentimiento son las bases aplicables. Los datos se conservan mientras la cuenta esté activa y se suprimen o anonimizan al eliminarla, salvo conservación exigida por ley. No se venden datos. Las transferencias internacionales y garantías de los proveedores deben verificarse en sus contratos y configuración.</p>
+      <h2>Derechos y contacto</h2><p>Puedes solicitar acceso, rectificación, supresión, limitación, oposición y portabilidad escribiendo a [COMPLETAR: correo de privacidad]. También puedes reclamar ante la Agencia Española de Protección de Datos. Puedes eliminar tu cuenta desde «Mi perfil».</p>
+      <p><strong>Acción necesaria antes de producción:</strong> verificar y completar identidad y contacto del responsable, bases jurídicas, plazos, transferencias, encargados y procedimiento de derechos conforme a la operativa real.</p>`
+  },
+  "/aviso-legal": {
+    title: "Aviso Legal",
+    body: `<p><strong>Titular del sitio:</strong> [COMPLETAR: nombre o razón social, NIF, domicilio, correo y, cuando proceda, datos registrales]. La información es obligatoria y debe completarla el titular antes de publicar.</p>
+      <h2>Objeto del servicio</h2><p>PLENO ofrece una aplicación para crear ligas privadas, realizar pronósticos deportivos recreativos y conversar con otros miembros. El acceso a las funciones de juego es gratuito.</p>
+      <h2>Propiedad intelectual y enlaces</h2><p>Los datos deportivos pueden proceder de terceros y se muestran conforme a sus condiciones. Los nombres, escudos y marcas de clubes pertenecen a sus titulares. Para consultas o notificaciones sobre contenidos, contacta con [COMPLETAR: correo de contacto].</p>`
+  },
+  "/cookies": {
+    title: "Política de Cookies",
+    body: `<p>PLENO no carga actualmente herramientas de analítica ni publicidad. La aplicación puede usar almacenamiento local estrictamente necesario para mantener preferencias, sesión y funcionamiento básico. Las fuentes tipográficas y servicios de autenticación/deporte pueden recibir solicitudes técnicas al utilizarlos; consulta sus políticas antes de configurar esos servicios.</p>
+      <h2>Preferencias</h2><p>El banner permite aceptar, rechazar o configurar cookies opcionales. En esta versión no hay cookies analíticas opcionales conectadas; por ello, aceptar analítica no activa ningún proveedor. Si se incorporan, deben cargarse únicamente tras consentimiento y esta política deberá identificar proveedor, finalidad, duración y transferencias.</p>
+      <button class="btn ghost" type="button" onclick="showCookieSettings()">Configurar cookies</button>`
+  },
+  "/terminos": {
+    title: "Términos de Uso",
+    body: `<p>El uso de PLENO requiere una cuenta y el cumplimiento de estos términos. Mantén segura tu cuenta, usa un nombre apropiado y no publiques contenido ilícito, abusivo o que infrinja derechos de terceros. Está disponible la opción de reportar mensajes y bloquear usuarios.</p>
+      <h2>Servicio recreativo y gratuito</h2><p class="legal-notice"><strong>PLENO es una plataforma 100 % gratuita y recreativa. No se realizan apuestas con dinero real, no se aceptan depósitos ni se pagan premios en dinero. Los puntos, clasificaciones y recompensas virtuales no tienen valor monetario. PLENO no es un operador de juego de azar y, por su funcionamiento descrito, no requiere licencia de juego de la DGOJ.</strong></p>
+      <h2>Disponibilidad y cambios</h2><p>El servicio se ofrece tal cual y puede interrumpirse por mantenimiento o incidencias de proveedores. Los datos de partidos dependen de fuentes externas. El titular deberá completar los datos de identificación y contacto en el Aviso Legal, y publicar un correo de soporte: [COMPLETAR].</p>
+      <h2>Cuenta y contenidos</h2><p>Puedes solicitar la eliminación de tu cuenta desde el perfil. Podemos retirar contenidos reportados que infrinjan estos términos o la ley. No publiques datos personales de terceros sin autorización.</p>`
+  }
+};
+function legalPage() {
+  const page = LEGAL_PAGES[window.location.pathname.replace(/\/+$/, "") || "/"];
+  if (!page) return "";
+  document.title = `${page.title} · PLENO`;
+  return `<main class="legal-page"><a class="brand-lockup" href="/" aria-label="Volver a PLENO"><img src="/icon.svg" alt=""><span class="logo">PLENO</span></a><article class="card legal-card"><span class="round-kicker">INFORMACIÓN DEL SERVICIO</span><h1>${page.title}</h1>${page.body}<nav class="legal-links" aria-label="Documentos legales">${Object.entries(LEGAL_PAGES).map(([path, item]) => `<a href="${path}">${item.title.replace("Política de ", "").replace(" de Uso", "")}</a>`).join("")}</nav><a class="btn legal-back" href="/">Volver a PLENO</a></article></main>`;
+}
+const COOKIE_KEY = "pleno:cookie-consent:v1";
+function cookiePreferences() {
+  try { return JSON.parse(localStorage.getItem(COOKIE_KEY) || "null"); }
+  catch { return null; }
+}
+function renderCookieBanner(configuring = false) {
+  const node = $("#cookie-consent");
+  if (!node || (cookiePreferences() && !configuring)) return;
+  const priorConsent = cookiePreferences();
+  node.innerHTML = `<section class="cookie-banner" role="dialog" aria-labelledby="cookie-title" aria-describedby="cookie-description"><div><h2 id="cookie-title">Tu privacidad importa</h2><p id="cookie-description">Usamos almacenamiento esencial para que PLENO funcione. No cargamos analítica actualmente. Puedes aceptar, rechazar o configurar cookies opcionales. <a href="/cookies">Más información</a>.</p>${configuring ? `<label class="cookie-option"><input id="cookie-analytics" type="checkbox" ${priorConsent?.analytics ? "checked" : ""}> Permitir analítica opcional</label>` : ""}</div><div class="cookie-actions">${configuring ? '<button class="btn ghost" type="button" onclick="saveCookiePreferences()">Guardar selección</button>' : '<button class="btn ghost" type="button" onclick="saveCookiePreferences(false)">Rechazar opcionales</button><button class="btn ghost" type="button" onclick="showCookieSettings()">Configurar</button><button class="btn" type="button" onclick="saveCookiePreferences(true)">Aceptar todas</button>'}</div></section>`;
+}
+function showCookieSettings() {
+  renderCookieBanner(true);
+  $("#cookie-analytics")?.focus();
+}
+function saveCookiePreferences(acceptAll = null) {
+  const analytics = acceptAll === null ? Boolean($("#cookie-analytics")?.checked) : acceptAll;
+  try {
+    localStorage.setItem(COOKIE_KEY, JSON.stringify({ necessary: true, analytics, savedAt: new Date().toISOString() }));
+  } catch {
+    toast("No se pudo guardar tu preferencia de cookies. Revisa los permisos del navegador.", "error");
+    return;
+  }
+  $("#cookie-consent").replaceChildren();
+}
+let lastLocalDay = new Intl.DateTimeFormat("en-CA").format(new Date());
+function refreshOnLocalDayChange() {
+  const localDay = new Intl.DateTimeFormat("en-CA").format(new Date());
+  if (localDay === lastLocalDay) return;
+  lastLocalDay = localDay;
+  if (AUTH.session && S.league?.id) refreshScoutState(false);
+  if (V.tab === "g") render();
+}
 function render() {
   const a = $("#app");
+  const legal = legalPage();
+  if (legal) {
+    a.innerHTML = legal;
+    syncInstructionsModal();
+    return;
+  }
   if (!AUTH.ready) {
     a.innerHTML = `<main class="auth-shell"><div class="card auth-card">Conectando con el servicio de cuentas…</div></main>`;
     syncInstructionsModal();
@@ -2471,6 +2722,7 @@ function render() {
   const topActions = a.querySelector(".top-actions");
   if (topActions) topActions.insertAdjacentHTML("afterbegin", infoButton() + profileButton());
   a.insertAdjacentHTML("beforeend", instructionsModal() + profileModal() + leaguePickerModal());
+  a.insertAdjacentHTML("beforeend", '<footer class="app-legal-footer"><a href="/privacidad">Privacidad</a><a href="/aviso-legal">Aviso legal</a><a href="/cookies">Cookies</a><a href="/terminos">Términos</a></footer>');
   syncInstructionsModal();
   const syncStatus = a.querySelector(".data-sync");
   if (syncStatus) {
@@ -2483,7 +2735,8 @@ function render() {
 if (typeof document !== "undefined" && document.documentElement) {
   document.documentElement.dataset.th = S.th;
   document.addEventListener("keydown", handleInstructionsKeydown);
-  render(); loadMain(); initializeAuth(); setInterval(poll, 30000); setInterval(refreshCloudPredictions, 60000);
+  renderCookieBanner();
+  render(); loadMain(); initializeAuth(); setInterval(poll, 30000); setInterval(refreshCloudPredictions, 60000); setInterval(refreshOnLocalDayChange, 30000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") poll(); });
   window.addEventListener("online", () => poll());
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("/sw.js").catch((error) => console.error("No se pudo registrar el service worker de PLENO:", error));

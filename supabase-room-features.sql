@@ -8,7 +8,7 @@ create table if not exists public.room_debts (
   description text not null check (char_length(description) between 1 and 120),
   status text not null default 'pending'
     check (status in ('pending', 'payment_reported', 'paid')),
-  created_by uuid not null references auth.users(id),
+  created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   payment_reported_at timestamptz,
   paid_at timestamptz,

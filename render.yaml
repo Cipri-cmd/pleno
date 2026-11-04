@@ -19,7 +19,7 @@ services:
     plan: starter
     buildCommand: "echo 'No build step required'"
     startCommand: "node scripts/publish-daily-challenge.mjs"
-    schedule: "5 0 * * *"
+    schedule: "0 0 * * *"
     envVars:
       - key: FOOTBALL_DATA_KEY
         sync: false

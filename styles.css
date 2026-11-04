@@ -1,6 +1,6 @@
 @import url('https://api.fontshare.com/v2/css?f[]=clash-display@200,300,400,500,600,700&display=swap');
 
-:root{--bg:#0C0D10;--s1:#14161B;--s2:#1C1F26;--ln:#272B34;--tx:#F3F4F6;--mu:#8B93A1;--ac:#FF3B30;--ac2:#FFB020;--bt:#fff;--ok:#34D399;--bad:#F87171;--r:16px;
+:root{--bg:#090d12;--s1:#111820;--s2:#18232d;--ln:#26343d;--tx:#f3f6f7;--mu:#94a3b8;--ac:#10b981;--ac2:#f5b942;--bt:#fff;--ok:#34d399;--bad:#f87171;--r:16px;
   --g:linear-gradient(135deg,var(--ac),var(--ac2))}
 html[data-th=blanco]{--bg:#F2F4F7;--s1:#fff;--s2:#EDF0F4;--ln:#E1E5EB;--tx:#0E1116;--mu:#5F6877;--ac:#D8002D;--ac2:#FF7A00;color-scheme:light}
 html[data-th=medianoche]{--bg:#050B1A;--s1:#0B1530;--s2:#12204A;--ln:#1E2F63;--tx:#EAF1FF;--mu:#8CA0CC;--ac:#22D3EE;--ac2:#A78BFA;--bt:#00131A}
@@ -726,4 +726,65 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
   .prediction-celebration{opacity:1}
   .prediction-celebration>strong,.prediction-celebration>span{transform:none;opacity:1}
   .celebration-ball{left:70%}
+}
+
+.dynamic-image{position:relative;display:inline-grid;flex:none;place-items:center;overflow:hidden;vertical-align:middle}
+.dynamic-image img{position:relative;z-index:1;width:100%;height:100%;object-fit:contain;opacity:1;transition:opacity .2s}
+.dynamic-image.is-loading img{opacity:0}
+.dynamic-image-skeleton{position:absolute;inset:0;display:none;background:linear-gradient(100deg,var(--s2) 20%,color-mix(in srgb,var(--mu) 22%,var(--s2)) 45%,var(--s2) 70%);background-size:220% 100%;animation:dynamic-image-shimmer 1.25s linear infinite}
+.dynamic-image.is-loading .dynamic-image-skeleton{display:block}
+.dynamic-image-placeholder{position:absolute;inset:0;display:none;place-items:center;background:color-mix(in srgb,var(--ac) 10%,var(--s2));color:var(--mu)}
+.dynamic-image.is-fallback .dynamic-image-placeholder{display:grid}
+.dynamic-image-placeholder svg{width:48%;height:48%;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.dynamic-image-placeholder b{font-size:.64em;letter-spacing:.04em}
+.cr{display:inline-grid;overflow:hidden}
+.cr .dynamic-image-placeholder{border-radius:inherit}
+.room-avatar.dynamic-image{display:inline-grid;overflow:hidden}
+.room-avatar .dynamic-image-placeholder{border-radius:inherit}
+.profile-photo-image.dynamic-image{width:min(180px,45vw);height:min(180px,45vw);border-radius:50%;border:1px solid var(--ln);background:var(--s2)}
+.profile-photo-image .dynamic-image-placeholder{border-radius:50%;font-size:30px}
+@keyframes dynamic-image-shimmer{to{background-position:-220% 0}}
+.auth-consent{display:flex;align-items:flex-start;gap:10px;margin:12px 0;color:var(--mu);font-size:12px;line-height:1.5}
+.auth-consent input,.cookie-option input{width:17px;height:17px;flex:none;margin:1px 0;accent-color:var(--ac)}
+.auth-consent a,.legal-page a:not(.btn),.cookie-banner a{color:var(--ac);text-decoration:underline;text-underline-offset:3px}
+.legal-links{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 18px;margin:20px auto;color:var(--mu);font-size:12px}
+.legal-page{max-width:860px;min-height:100vh;margin:auto;padding:28px 18px 60px}
+.legal-card{margin-top:22px;padding:clamp(20px,5vw,42px)}
+.legal-card>h1{margin-top:12px}
+.legal-card h2{margin-top:28px;color:var(--tx);letter-spacing:.4px;text-transform:none;font-size:17px}
+.legal-card p{color:var(--mu);line-height:1.75}
+.legal-card .legal-notice{padding:16px;border:1px solid color-mix(in srgb,var(--ac2) 55%,var(--ln));border-radius:12px;background:color-mix(in srgb,var(--ac2) 9%,var(--s1));color:var(--tx)}
+.legal-back{display:inline-block;margin-top:8px;text-decoration:none}
+.cookie-banner{position:fixed;z-index:30;right:16px;bottom:16px;left:16px;display:flex;max-width:1000px;align-items:center;justify-content:space-between;gap:20px;margin:auto;padding:18px 20px;border:1px solid var(--ln);border-radius:16px;background:color-mix(in srgb,var(--s1) 96%,transparent);box-shadow:0 12px 50px #0008;backdrop-filter:blur(16px)}
+.cookie-banner h2{margin:0 0 5px;color:var(--tx);font-size:15px;letter-spacing:0;text-transform:none}
+.cookie-banner p{max-width:570px;margin:0;color:var(--mu);font-size:12px}
+.cookie-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.cookie-actions .btn{padding:9px 12px;font-size:11px}
+.cookie-option{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px}
+.room-chat-moderation{display:flex;gap:10px;margin-top:5px}
+.room-chat-moderation button,.profile-blocked button{padding:0;border:0;background:none;color:var(--mu);font-size:10px;text-decoration:underline;text-underline-offset:2px}
+.room-chat-moderation button:hover,.profile-blocked button:hover{color:var(--ac)}
+.room-chat-skeleton{display:grid;gap:12px;padding:6px}
+.room-chat-skeleton i{height:42px;width:62%;border-radius:12px;background:linear-gradient(100deg,var(--s2) 20%,color-mix(in srgb,var(--mu) 20%,var(--s2)) 45%,var(--s2) 70%);background-size:220% 100%;animation:dynamic-image-shimmer 1.25s linear infinite}
+.room-chat-skeleton i:nth-child(2){width:78%;margin-left:auto}
+.room-chat-skeleton i:nth-child(3){width:54%}
+.profile-blocked{width:100%;margin-top:12px;border-top:1px solid var(--ln);padding-top:12px}
+.profile-blocked h3{margin:0 0 8px;font-size:13px}
+.profile-blocked p{margin:0;color:var(--mu);font-size:12px}
+.profile-blocked ul{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.profile-blocked li{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--mu);font-size:12px}
+.profile-delete-account{width:100%;margin-top:18px;border:1px solid color-mix(in srgb,var(--bad) 50%,var(--ln));background:color-mix(in srgb,var(--bad) 12%,var(--s1));color:var(--bad)}
+.round-winner .round-place,.crown-player strong{color:var(--ac2)}
+.app-legal-footer{display:flex;justify-content:center;flex-wrap:wrap;gap:14px;padding:14px 12px 28px;color:var(--mu);font-size:11px}
+.app-legal-footer a{color:inherit;text-decoration:none}
+.app-legal-footer a:hover{color:var(--ac)}
+@media(max-width:680px){
+  .cookie-banner{right:8px;bottom:calc(82px + env(safe-area-inset-bottom,0));left:8px;display:block;padding:15px}
+  .cookie-actions{justify-content:flex-start;margin-top:12px}
+  .cookie-actions .btn{flex:1}
+  .legal-page{padding:20px 12px 40px}
+}
+@media(prefers-reduced-motion:reduce){
+  .dynamic-image-skeleton,.room-chat-skeleton i{animation:none}
+  .dynamic-image img{transition:none}
 }

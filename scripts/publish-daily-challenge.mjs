@@ -163,11 +163,11 @@ export async function publishDailyChallenge({
         : `Ya existe el reto de ${challengeDate}; no se modificó.`);
       return;
     } catch (error) {
-      if (/player cannot repeat on consecutive days/i.test(error.message)) continue;
+      if (/player used within the last 30 days/i.test(error.message)) continue;
       throw error;
     }
   }
-  throw new Error("No se pudo encontrar un jugador distinto al del reto de ayer.");
+  throw new Error("No se encontró un jugador que no haya aparecido en los últimos 30 días.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
