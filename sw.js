@@ -1,5 +1,5 @@
 // Sirve la app desde caché al instante y actualiza los recursos en segundo plano.
-const C = "pleno-v36", SHELL = ["/", "/index.html", "/manifest.webmanifest", "/styles.css?v=34", "/lib.js?v=32", "/app.js?v=35", "/icon.svg", "/icon-192.svg", "/icon-512.svg"];
+const C = "pleno-v37", SHELL = ["/", "/index.html", "/manifest.webmanifest", "/styles.css?v=35", "/lib.js?v=32", "/app.js?v=36", "/icon.svg", "/icon-192.svg", "/icon-512.svg"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(C).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("pleno-") && key !== C).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", (e) => {

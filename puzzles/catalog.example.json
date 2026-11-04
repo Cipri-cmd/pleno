@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "attribution": "Wikidata (CC0); football-data.org cuando se use para plantillas actuales",
+  "entities": [
+    {
+      "id": "Q12345",
+      "name": "Nombre verificado",
+      "attributes": {
+        "club": "Club verificado",
+        "country": "País verificado",
+        "position": "Delantero",
+        "age": 25,
+        "shirt_number": 9,
+        "height_cm": 180
+      }
+    }
+  ],
+  "connections": [],
+  "grid": [],
+  "player": []
+}

@@ -29,6 +29,19 @@ const LEAGUES = {
   createName: "", leagueName: "", joinName: "", inviteCode: ""
 };
 const GAME = { loading: false, busy: false, spinning: false, spinStage: "", wheelRotation: 0, wheelResult: null, data: null, error: "", date: "", publicationRequestedDate: "", publicationTimer: null };
+const DAILY_GAMES = {
+  date: "",
+  selected: "connections",
+  items: {},
+  history: { connections: [], grid: [], player: [] },
+  selection: [],
+  selectedCell: null,
+  loading: false,
+  busy: false,
+  loaded: false,
+  requestId: 0,
+  error: ""
+};
 const WHEEL_SECTIONS = [
   { type: "boots_gold", title: "Botas de Oro", subtitle: "+5 puntos" },
   { type: "joker_x2", title: "El Maletín", subtitle: "Joker x2" },
@@ -661,6 +674,16 @@ async function handleAuthSession(session) {
     GAME.leaderboard = [];
     GAME.error = "";
     GAME.date = "";
+    DAILY_GAMES.requestId++;
+    DAILY_GAMES.date = "";
+    DAILY_GAMES.items = {};
+    DAILY_GAMES.history = { connections: [], grid: [], player: [] };
+    DAILY_GAMES.selection = [];
+    DAILY_GAMES.selectedCell = null;
+    DAILY_GAMES.loading = false;
+    DAILY_GAMES.busy = false;
+    DAILY_GAMES.loaded = false;
+    DAILY_GAMES.error = "";
   }
   if (session) {
     try { await loadCloudLeague(); }
@@ -1734,7 +1757,7 @@ async function submitMinuteOfGold() {
     render();
   }
 }
-function tJuego() {
+function legacyMinigames() {
   if (GAME.loading && !GAME.data) return `<section class="scout-shell"><div class="scout-skeleton"></div><div class="scout-skeleton"></div><div class="scout-skeleton"></div></section>`;
   const data = GAME.data;
   if (GAME.error && !data) return `<section class="scout-shell"><div class="scout-panel scout-empty"><span class="scout-kicker">PLENO · JUEGOS DIARIOS</span><h1>No se pudo abrir la competición</h1><p>${esc(GAME.error)}</p><button class="btn" onclick="loadScoutGame()">Reintentar</button></div></section>`;
@@ -1846,6 +1869,281 @@ function tJuego() {
     <div class="scout-game-grid">${dailySection}${wheelSection}${minutePanel}${inventoryPanel}</div>
     <footer class="scout-footnote"><span>◇</span><p>Las respuestas, giros, inventario y bonus se validan en Supabase. El Minuto de Oro se liquida al sincronizar el resultado oficial del partido.</p></footer>
   </section>`;
+}
+
+const DAILY_GAME_INFO = {
+  connections: { title: "Conexiones", subtitle: "Encuentra los cuatro grupos ocultos entre 16 fichas.", icon: "▦" },
+  grid: { title: "Cruce 3×3", subtitle: "Completa cada cruce con un futbolista válido.", icon: "▤" },
+  player: { title: "Adivina al crack", subtitle: "Descubre el jugador con pistas comparativas.", icon: "?" }
+};
+async function loadDailyGameHub(force = false) {
+  if (!AUTH.client || !AUTH.session || (DAILY_GAMES.loading && !force)) return;
+  const date = DAILY_GAMES.date || madridDate();
+  if (!force && DAILY_GAMES.loaded && DAILY_GAMES.date === date) return;
+  const requestId = ++DAILY_GAMES.requestId;
+  DAILY_GAMES.loading = true;
+  DAILY_GAMES.error = "";
+  if (V.tab === "g") render();
+  try {
+    const [{ data, error }, ...historyResults] = await Promise.all([
+      AUTH.client.rpc("get_daily_games_for_day", { p_puzzle_date: date }),
+      ...Object.keys(DAILY_GAME_INFO).map((game) =>
+        AUTH.client.rpc("get_daily_games_history", { p_game: game, p_limit: 365 })
+      )
+    ]);
+    if (requestId !== DAILY_GAMES.requestId) return;
+    if (error) throw error;
+    const items = Object.fromEntries((data || []).map((item) => [item.game, item]));
+    const history = {};
+    for (const [index, game] of Object.keys(DAILY_GAME_INFO).entries()) {
+      if (historyResults[index].error) throw historyResults[index].error;
+      history[game] = historyResults[index].data || [];
+    }
+    DAILY_GAMES.items = items;
+    DAILY_GAMES.history = history;
+    DAILY_GAMES.loaded = true;
+  } catch (error) {
+    if (requestId !== DAILY_GAMES.requestId) return;
+    const message = errorText(error);
+    DAILY_GAMES.error = /get_daily_games_for_day|get_daily_games_history|schema cache|PGRST202|42883/i.test(message)
+      ? "Falta ejecutar supabase-daily-games.sql en Supabase para instalar los juegos diarios."
+      : `No se pudieron cargar los juegos diarios: ${message}`;
+  } finally {
+    if (requestId === DAILY_GAMES.requestId) {
+      DAILY_GAMES.loading = false;
+      if (V.tab === "g") render();
+    }
+  }
+}
+function setDailyGame(game) {
+  if (!DAILY_GAME_INFO[game]) return;
+  DAILY_GAMES.selected = game;
+  DAILY_GAMES.selection = [];
+  DAILY_GAMES.selectedCell = null;
+  render();
+}
+function toggleDailyConnectionTile(id) {
+  const item = DAILY_GAMES.items.connections;
+  const solvedIds = new Set((item?.progress?.progress?.revealed_groups || [])
+    .flatMap((group) => (group.members || []).map((member) => member.id)));
+  if (!item || solvedIds.has(id) || DAILY_GAMES.busy) return;
+  DAILY_GAMES.selection = DAILY_GAMES.selection.includes(id)
+    ? DAILY_GAMES.selection.filter((value) => value !== id)
+    : DAILY_GAMES.selection.length < 4 ? [...DAILY_GAMES.selection, id] : DAILY_GAMES.selection;
+  render();
+}
+function selectDailyGridCell(index) {
+  const progress = DAILY_GAMES.items.grid?.progress;
+  if (DAILY_GAMES.busy || progress?.solved || progress?.progress?.picks?.[String(index)]) return;
+  DAILY_GAMES.selectedCell = index;
+  render();
+  requestAnimationFrame(() => $("#daily-game-answer")?.focus());
+}
+async function submitDailyGameGuess(event) {
+  event?.preventDefault();
+  const game = DAILY_GAMES.selected;
+  const item = DAILY_GAMES.items[game];
+  if (!item || DAILY_GAMES.busy || item.progress?.solved) return;
+  let guess;
+  if (game === "connections") {
+    if (DAILY_GAMES.selection.length !== 4) {
+      DAILY_GAMES.error = "Selecciona exactamente cuatro fichas.";
+      render();
+      return;
+    }
+    guess = { tiles: DAILY_GAMES.selection };
+  } else {
+    const answer = $("#daily-game-answer")?.value.trim();
+    if (!answer) {
+      DAILY_GAMES.error = "Escribe el nombre de un jugador.";
+      render();
+      return;
+    }
+    if (game === "grid") {
+      if (!Number.isInteger(DAILY_GAMES.selectedCell)) {
+        DAILY_GAMES.error = "Elige primero una casilla de la cuadrícula.";
+        render();
+        return;
+      }
+      guess = { cell: DAILY_GAMES.selectedCell, player: answer };
+    } else {
+      guess = { player: answer };
+    }
+  }
+  DAILY_GAMES.busy = true;
+  DAILY_GAMES.error = "";
+  render();
+  try {
+    const { error } = await AUTH.client.rpc("submit_daily_game_guess", {
+      p_game: game,
+      p_puzzle_date: DAILY_GAMES.date,
+      p_guess: guess
+    });
+    if (error) throw error;
+    DAILY_GAMES.selection = [];
+    DAILY_GAMES.selectedCell = null;
+    await loadDailyGameHub(true);
+    navigator.vibrate?.(game === "connections" ? [25, 30, 45] : 25);
+  } catch (error) {
+    DAILY_GAMES.error = `No se pudo validar la respuesta: ${errorText(error)}`;
+  } finally {
+    DAILY_GAMES.busy = false;
+    if (V.tab === "g") render();
+  }
+}
+function dailyGameStreak(game) {
+  const wins = new Set((DAILY_GAMES.history[game] || [])
+    .filter((entry) => entry.streak_eligible !== false && entry.outcome === "won")
+    .map((entry) => entry.date));
+  const today = madridDate();
+  const yesterdayDate = new Date(`${today}T12:00:00Z`);
+  yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+  let current = wins.has(today) ? today : yesterdayDate.toISOString().slice(0, 10);
+  let streak = 0;
+  while (wins.has(current)) {
+    streak++;
+    const previous = new Date(`${current}T12:00:00Z`);
+    previous.setUTCDate(previous.getUTCDate() - 1);
+    current = previous.toISOString().slice(0, 10);
+  }
+  return streak;
+}
+function nextMadridMidnight() {
+  const tomorrow = new Date(`${madridDate()}T12:00:00Z`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const [year, month, day] = tomorrow.toISOString().slice(0, 10).split("-").map(Number);
+  const targetWallTime = Date.UTC(year, month - 1, day);
+  let timestamp = targetWallTime;
+  const formatter = new Intl.DateTimeFormat("en", {
+    timeZone: "Europe/Madrid",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const parts = Object.fromEntries(formatter.formatToParts(new Date(timestamp))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]));
+    const localWallTime = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+    timestamp += targetWallTime - localWallTime;
+  }
+  return new Date(timestamp);
+}
+function updateDailyCountdown() {
+  const node = $("#daily-countdown");
+  if (!node || node.dataset.date !== madridDate()) return;
+  const seconds = Math.max(0, Math.floor((nextMadridMidnight().getTime() - Date.now()) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  node.textContent = `Nuevo puzzle en ${hours}h ${minutes}m ${remainder}s`;
+}
+function dailyGameShare(game) {
+  const info = DAILY_GAME_INFO[game];
+  const item = DAILY_GAMES.items[game];
+  if (!info || !item?.progress?.solved) return;
+  const progress = item.progress.progress || {};
+  const score = game === "connections"
+    ? `${progress.solved_groups?.length || 0}/4`
+    : game === "grid"
+      ? `${Object.keys(progress.picks || {}).length}/9`
+      : `${item.progress.attempts_count}/8`;
+  const result = `PLENO ${info.title} · ${item.date}\n${progress.outcome === "won" ? "✅" : "⬜"} ${score}\n${location.origin}/`;
+  if (navigator.share) {
+    navigator.share({ title: "Mi resultado en PLENO", text: result }).catch((error) => {
+      if (error.name !== "AbortError") toast(`No se pudo compartir: ${error.message}`, "error");
+    });
+    return;
+  }
+  navigator.clipboard?.writeText(result)
+    .then(() => toast("Resultado copiado para compartir."))
+    .catch((error) => toast(`No se pudo copiar: ${error.message}`, "error"));
+}
+async function reportDailyGameError() {
+  const game = DAILY_GAMES.selected;
+  const details = window.prompt("¿Qué error has encontrado? No incluyas datos personales.");
+  if (details === null) return;
+  try {
+    const { error } = await AUTH.client.rpc("report_daily_game_error", {
+      p_game: game,
+      p_puzzle_date: DAILY_GAMES.date,
+      p_details: details
+    });
+    if (error) throw error;
+    toast("Gracias. Hemos registrado el aviso para revisar el puzzle.");
+  } catch (error) {
+    toast(`No se pudo enviar el aviso: ${errorText(error)}`, "error");
+  }
+}
+function setDailyGameDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value > madridDate()) return;
+  DAILY_GAMES.requestId++;
+  DAILY_GAMES.date = value;
+  DAILY_GAMES.items = {};
+  DAILY_GAMES.loaded = false;
+  DAILY_GAMES.error = "";
+  loadDailyGameHub(true);
+}
+function dailyGamePanel() {
+  if (!DAILY_GAMES.loaded && !DAILY_GAMES.loading && !DAILY_GAMES.error) {
+    DAILY_GAMES.date ||= madridDate();
+    queueMicrotask(() => loadDailyGameHub());
+  }
+  const selected = DAILY_GAMES.selected;
+  const item = DAILY_GAMES.items[selected];
+  const info = DAILY_GAME_INFO[selected];
+  const progress = item?.progress || {};
+  const detail = progress.progress || {};
+  const dateInput = `<label class="daily-archive-picker">Fecha del puzzle<input type="date" value="${esc(DAILY_GAMES.date || madridDate())}" max="${madridDate()}" min="${new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10)}" onchange="setDailyGameDate(this.value)" aria-label="Elegir fecha del archivo"></label>`;
+  const gameCards = Object.entries(DAILY_GAME_INFO).map(([game, gameInfo]) => {
+    const gameItem = DAILY_GAMES.items[game];
+    const done = Boolean(gameItem?.progress?.solved);
+    const streak = dailyGameStreak(game);
+    return `<button class="daily-game-card ${selected === game ? "is-selected" : ""}" type="button" onclick="setDailyGame('${game}')" aria-pressed="${selected === game}"><span class="daily-game-icon" aria-hidden="true">${gameInfo.icon}</span><b>${gameInfo.title}</b><small>${gameItem ? done ? "Completado" : "Pendiente" : "En preparación"}</small><span class="daily-game-streak">🔥 ${streak} ${streak === 1 ? "día" : "días"}</span></button>`;
+  }).join("");
+  let play = "";
+  if (DAILY_GAMES.loading && !DAILY_GAMES.loaded) {
+    play = `<div class="daily-game-empty" role="status">Cargando el puzzle seguro del servidor…</div>`;
+  } else if (DAILY_GAMES.error) {
+    play = `<div class="daily-game-empty daily-game-error" role="alert">${esc(DAILY_GAMES.error)} <button class="btn ghost" type="button" onclick="loadDailyGameHub(true)">Reintentar</button></div>`;
+  } else if (!item) {
+    play = `<div class="daily-game-empty"><span class="daily-game-status">PUZZLE NO PUBLICADO</span><h3>${info.title}</h3><p>No hay un puzzle verificado para esta fecha. No inventamos datos: vuelve cuando el catálogo de fútbol esté preparado.</p></div>`;
+  } else if (selected === "connections") {
+    const revealed = detail.revealed_groups || [];
+    const revealedIds = new Set(revealed.flatMap((group) => (group.members || []).map((member) => member.id)));
+    const tiles = (item.payload.tiles || []).map((tile) =>
+      `<button class="daily-connection-tile ${DAILY_GAMES.selection.includes(tile.id) ? "is-picked" : ""} ${revealedIds.has(tile.id) ? "is-solved" : ""}" type="button" onclick="toggleDailyConnectionTile('${esc(tile.id)}')" aria-pressed="${DAILY_GAMES.selection.includes(tile.id)}" ${revealedIds.has(tile.id) || progress.solved ? "disabled" : ""}>${esc(tile.name)}</button>`
+    ).join("");
+    const groups = revealed.map((group) =>
+      `<article class="daily-connection-group daily-level-${esc(group.color)}"><b>${esc(group.category)}</b><span>${(group.members || []).map((member) => esc(member.name)).join(" · ")}</span></article>`
+    ).join("");
+    const lost = progress.solved && detail.outcome !== "won";
+    play = `<section class="daily-game-play"><header><span class="daily-game-status">${progress.solved ? detail.outcome === "won" ? "COMPLETADO" : "PARTIDA FINALIZADA" : "EN JUEGO"}</span><h3>Encuentra cuatro grupos de cuatro</h3><p>Errores: ${Number(progress.mistakes_count) || 0}/4${detail.one_away ? " · ¡A una ficha!" : ""}</p></header>${groups}<div class="daily-connections-grid">${tiles}</div>${!progress.solved ? `<form class="daily-answer-form" onsubmit="submitDailyGameGuess(event)"><p aria-live="polite">${DAILY_GAMES.selection.length} de 4 fichas seleccionadas</p><button class="btn" type="submit" ${DAILY_GAMES.busy || DAILY_GAMES.selection.length !== 4 ? "disabled" : ""}>${DAILY_GAMES.busy ? "Comprobando…" : "Comprobar grupo"}</button></form>` : `<p class="daily-game-result" aria-live="polite">${lost ? "Se acabaron los errores permitidos." : "¡Has encontrado todas las conexiones!"}</p>`}</section>`;
+  } else if (selected === "grid") {
+    const picks = detail.picks || {};
+    const rows = item.payload.rows || [];
+    const columns = item.payload.columns || [];
+    const cells = Array.from({ length: 9 }, (_, index) => {
+      const pick = picks[String(index)];
+      return `<button class="daily-grid-cell ${pick ? "is-filled" : ""} ${DAILY_GAMES.selectedCell === index ? "is-active" : ""}" type="button" onclick="selectDailyGridCell(${index})" aria-label="Fila ${esc(rows[Math.floor(index / 3)] || "")}, columna ${esc(columns[index % 3] || "")}${pick ? `, ${esc(pick.name)}, ${pick.points} puntos` : ", vacía"}" ${pick || progress.solved ? "disabled" : ""}><small>${pick ? `${pick.points} pts` : `${esc(rows[Math.floor(index / 3)] || "")} × ${esc(columns[index % 3] || "")}`}</small><b>${esc(pick?.name || "＋")}</b></button>`;
+    }).join("");
+    play = `<section class="daily-game-play"><header><span class="daily-game-status">${progress.solved ? detail.outcome === "won" ? "COMPLETADO" : "INTENTOS AGOTADOS" : "EN JUEGO"}</span><h3>Completa los nueve cruces</h3><p>${Number(progress.attempts_count) || 0}/9 intentos · ${Number(progress.score) || 0} puntos${detail.last_correct === false ? " · Ese jugador no cumple este cruce." : ""}</p></header><div class="daily-grid-board"><div class="daily-grid-corner" aria-hidden="true">⚽</div>${columns.map((column) => `<b class="daily-grid-axis">${esc(column)}</b>`).join("")}${rows.map((row, rowIndex) => `<b class="daily-grid-axis daily-grid-row">${esc(row)}</b>${cells.slice(rowIndex * 3, rowIndex * 3 + 3)}`).join("")}</div>${!progress.solved ? `<form class="daily-answer-form daily-grid-answer-form" onsubmit="submitDailyGameGuess(event)"><label for="daily-game-answer">${DAILY_GAMES.selectedCell == null ? "Selecciona una casilla" : `Jugador para la casilla ${DAILY_GAMES.selectedCell + 1}`}</label><input id="daily-game-answer" maxlength="100" autocomplete="off" placeholder="Nombre del futbolista" required ${DAILY_GAMES.selectedCell == null || DAILY_GAMES.busy ? "disabled" : ""}><button class="btn" type="submit" ${DAILY_GAMES.selectedCell == null || DAILY_GAMES.busy ? "disabled" : ""}>${DAILY_GAMES.busy ? "Comprobando…" : "Validar jugador"}</button></form>` : `<p class="daily-game-result" aria-live="polite">${detail.outcome === "won" ? "¡Cuadrícula completa!" : "Se han agotado los intentos."} Puntuación: ${Number(progress.score) || 0}.</p>`}</section>`;
+  } else {
+    const guesses = detail.guesses || [];
+    const rows = guesses.map((guess) =>
+      `<article class="daily-player-guess"><b>${esc(guess.name)}</b><div>${(guess.comparisons || []).map((comparison) => `<span class="daily-comparison is-${esc(comparison.color)}" aria-label="${esc(comparison.label)}: ${esc(comparison.color)}">${esc(comparison.label)}${comparison.direction === "up" ? " ↑" : comparison.direction === "down" ? " ↓" : ""}</span>`).join("")}</div></article>`
+    ).join("");
+    play = `<section class="daily-game-play"><header><span class="daily-game-status">${progress.solved ? detail.outcome === "won" ? "ACERTADO" : "PARTIDA FINALIZADA" : "EN JUEGO"}</span><h3>¿Quién es el jugador?</h3><p>${Number(progress.attempts_count) || 0}/8 intentos · Club, país, posición, edad, dorsal y altura.</p></header>${rows || `<p class="daily-player-empty">Las pistas aparecerán después de tu primer intento.</p>`}${progress.solved ? `<p class="daily-game-result" aria-live="polite">${detail.outcome === "won" ? `¡Era ${esc(detail.answer?.name || "el jugador")}!` : `El jugador era ${esc(detail.answer?.name || "la respuesta correcta")}.`}</p>` : `<form class="daily-answer-form daily-grid-answer-form" onsubmit="submitDailyGameGuess(event)"><label for="daily-game-answer">Tu respuesta</label><input id="daily-game-answer" maxlength="100" autocomplete="off" placeholder="Nombre del futbolista" required ${DAILY_GAMES.busy ? "disabled" : ""}><button class="btn" type="submit" ${DAILY_GAMES.busy ? "disabled" : ""}>${DAILY_GAMES.busy ? "Comprobando…" : "Probar jugador"}</button></form>`}</section>`;
+  }
+  const isToday = DAILY_GAMES.date === madridDate();
+  return `<section class="daily-games-hub" aria-labelledby="daily-games-title"><header class="daily-games-heading"><div><span class="scout-kicker">PLENO · JUEGOS ORIGINALES</span><h2 id="daily-games-title">Juegos diarios</h2><p>Un puzzle nuevo cada día. La racha sigue el calendario de Madrid.</p></div>${dateInput}</header><div class="daily-game-cards">${gameCards}</div>${play}<footer class="daily-games-footer"><span id="daily-countdown" data-date="${esc(DAILY_GAMES.date)}">${isToday ? "Nuevo puzzle a las 00:00 · Europe/Madrid" : "Archivo · jugar una fecha anterior no cambia la racha de hoy"}</span><div><button class="btn ghost" type="button" onclick="reportDailyGameError()" ${!item ? "disabled" : ""}>Reportar error</button>${progress.solved ? `<button class="btn ghost" type="button" onclick="dailyGameShare('${selected}')">Compartir resultado</button>` : ""}</div></footer></section>`;
+}
+function tJuego() {
+  return `${dailyGamePanel()}<details class="legacy-minigames"><summary>Retos de LaLiga: Fichaje, Ruleta y Minuto de Oro</summary>${legacyMinigames()}</details>`;
 }
 
 /* ---------- vistas ---------- */
@@ -2459,7 +2757,7 @@ function tInicio() {
     ${nextCard}
   </section>
   <div class="stats home-stats"><div><span>TUS PUNTOS</span><b>${me.pts}</b><small>en la temporada</small></div><div><span>POSICIÓN</span><b>${rank}<i>º</i></b><small>en ${esc(S.league.name)}</small></div><div><span>MARCADOR EXACTO</span><b>${me.ex}</b><small>plenos conseguidos</small></div></div>
-  <button class="home-scout" onclick="switchTab('g')"><span class="home-scout-icon" aria-hidden="true">✦</span><span><small>RETOS DIARIOS · PLENO</small><b>Compite incluso entre jornadas</b><i>Scouting, ruleta VAR y Minuto de Oro.</i></span><strong>Jugar <span aria-hidden="true">→</span></strong></button>
+  <button class="home-scout" onclick="switchTab('g')"><span class="home-scout-icon" aria-hidden="true">✦</span><span><small>JUEGOS DIARIOS · PLENO</small><b>Compite incluso entre jornadas</b><i>Conexiones, Cruce 3×3 y Adivina al crack.</i></span><strong>Jugar <span aria-hidden="true">→</span></strong></button>
   ${pend ? `<div class="alert home-alert"><span><b>Te faltan ${pend} pronóstico${pend === 1 ? "" : "s"}</b> para completar la jornada ${D.cur}.</span><button class="btn" onclick="switchTab('p')">Completar ahora <span aria-hidden="true">→</span></button></div>` : ""}
   </div>
   <div class="home-dashboard-grid"><div class="home-dashboard-main">
@@ -2724,11 +3022,24 @@ let lastLocalDay = new Intl.DateTimeFormat("en-CA").format(new Date());
 let lastMissingChallengeRetryAt = 0;
 let missingChallengeRefresh = false;
 function refreshOnChallengeDayChange() {
+  updateDailyCountdown();
   const challengeDay = madridDate();
   const localDay = new Intl.DateTimeFormat("en-CA").format(new Date());
   if (challengeDay === lastChallengeDay && localDay === lastLocalDay) return;
+  const previousChallengeDay = lastChallengeDay;
   lastChallengeDay = challengeDay;
   lastLocalDay = localDay;
+  if (challengeDay !== previousChallengeDay && DAILY_GAMES.date === previousChallengeDay) {
+    DAILY_GAMES.date = challengeDay;
+    DAILY_GAMES.items = {};
+    DAILY_GAMES.loaded = false;
+    DAILY_GAMES.error = "";
+    DAILY_GAMES.selection = [];
+    DAILY_GAMES.selectedCell = null;
+    DAILY_GAMES.requestId++;
+    DAILY_GAMES.loading = false;
+    if (AUTH.session) loadDailyGameHub(true);
+  }
   if (AUTH.session && S.league?.id) refreshScoutState(false);
   if (V.tab === "g") render();
 }
