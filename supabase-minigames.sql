@@ -55,8 +55,11 @@ create table if not exists private.daily_challenge_answers (
   challenge_id uuid primary key
     references public.daily_challenges(id) on delete cascade,
   answer_normalized text not null,
-  accepted_answers text[] not null default '{}'
+  accepted_answers text[] not null default '{}',
+  source_player_id text
 );
+alter table private.daily_challenge_answers
+  add column if not exists source_player_id text;
 revoke all on private.daily_challenge_answers from public, anon, authenticated;
 grant all on private.daily_challenge_answers to service_role;
 

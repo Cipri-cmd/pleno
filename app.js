@@ -1480,30 +1480,43 @@ function roomFeatures() {
 async function refreshScoutState(showError = true) {
   if (!AUTH.client || !AUTH.session || !S.league?.id) return;
   const date = madridDate();
+  const leagueId = S.league.id;
+  let stateLoaded = false;
+  AUTH.client.rpc("get_minigame_score_modifiers", { p_league_id: leagueId })
+    .then(({ data, error }) => {
+      if (error) throw error;
+      if (S.league?.id !== leagueId) return;
+      D.minigames = {
+        round_bonuses: data?.round_bonuses || [],
+        minute_bonuses: data?.minute_bonuses || [],
+        red_cards: data?.red_cards || []
+      };
+    })
+    .catch((error) => {
+      D.minigames = { round_bonuses: [], minute_bonuses: [], red_cards: [] };
+      if (stateLoaded && S.league?.id === leagueId && GAME.date === date && GAME.data?.available) {
+        GAME.error = `El reto diario está disponible, pero no se cargaron las bonificaciones: ${error.message || error}`;
+      }
+      if (V.tab === "g") render();
+    });
   try {
     const match = featuredMatch();
-    const [{ data, error }, modifiers] = await Promise.all([
-      AUTH.client.rpc("get_daily_minigames_state", {
-        p_challenge_date: date,
-        p_league_id: S.league.id,
-        p_match_id: match?.id ?? null
-      }),
-      AUTH.client.rpc("get_minigame_score_modifiers", { p_league_id: S.league.id })
-    ]);
+    const { data, error } = await AUTH.client.rpc("get_daily_minigames_state", {
+      p_challenge_date: date,
+      p_league_id: S.league.id,
+      p_match_id: match?.id ?? null
+    });
     if (error) throw error;
-    if (modifiers.error) throw modifiers.error;
     GAME.data = data;
     GAME.date = date;
+    stateLoaded = true;
     if (data?.spin && !GAME.spinning) {
       const sectionIndex = Number(data.spin.resolved_section_index || data.spin.section_index);
       GAME.wheelRotation = (330 - 60 * (sectionIndex - 1) + 360) % 360;
     }
-    GAME.error = "";
-    D.minigames = {
-      round_bonuses: modifiers.data?.round_bonuses || [],
-      minute_bonuses: modifiers.data?.minute_bonuses || [],
-      red_cards: modifiers.data?.red_cards || []
-    };
+    GAME.error = data?.available
+      ? ""
+      : `No se ha publicado el reto del ${date}. Comprueba que el cron diario de Render esté activo y que se hayan aplicado los SQL de minijuegos y automatización.`;
   } catch (error) {
     const message = error.message || String(error);
     GAME.error = /get_daily_minigames_state|submit_daily_player_guess|spin_daily_var|schema cache/i.test(message)
@@ -1693,7 +1706,7 @@ function tJuego() {
   }).join("");
   const errorMessage = GAME.error ? `<p class="scout-error" role="alert">${esc(GAME.error)}</p>` : "";
   const dailySection = !data?.available
-    ? `<section class="scout-panel scout-empty"><span class="scout-status">SIN RETO PUBLICADO</span><h2>El Fichaje Clandestino</h2><p>El reto de hoy todavía no está publicado. Vuelve cuando aparezca el nuevo expediente.</p><button class="btn ghost" onclick="loadScoutGame()">Actualizar</button></section>`
+    ? `<section class="scout-panel scout-empty"><span class="scout-status">SIN RETO PUBLICADO</span><h2>El Fichaje Clandestino</h2><p>No hay jugador asignado para el ${esc(GAME.date || madridDate())}. La publicación automática debe ejecutarse cada día en Render; si el aviso persiste, revisa el cron y aplica los SQL de minijuegos y automatización.</p><button class="btn ghost" onclick="loadScoutGame()">Comprobar de nuevo</button></section>`
     : `<section class="scout-panel"><div class="scout-panel-head"><div><span class="scout-status ${!solved && !exhausted && data.playable ? "is-open" : ""}">${solved ? "FICHAJE CONFIRMADO" : exhausted ? "INTENTOS AGOTADOS" : data.playable ? "RETO DIARIO EN JUEGO" : "PLAZO CERRADO"}</span><h2>${esc(challenge.title || "El Fichaje Clandestino")}</h2></div><div class="scout-progress"><b>${attempts}<i>/${maxAttempts}</i></b><small>intentos usados</small></div></div>
       <span class="scout-difficulty">MODO OJEADOR · SIN SUGERENCIAS</span>
       <div class="scout-progress-track"><i style="width:${Math.min(100, attempts / maxAttempts * 100)}%"></i></div>
@@ -1912,52 +1925,13 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
   <h1><span class="auth-heading-line">El fútbol no se mira.</span><span class="auth-heading-accent">Se vive en equipo.</span></h1>
   <p>Haz tu porra. Reta a los tuyos. Que hable el marcador.</p>
   <div class="auth-pitch-wrap">
-  <svg class="auth-illustration" viewBox="0 0 640 330" role="img" aria-labelledby="auth-pitch-title auth-pitch-description">
-    <title id="auth-pitch-title">Pizarra táctica PLENO</title>
-    <desc id="auth-pitch-description">Un campo de fútbol digital con jugadores en movimiento y una porra de dos a uno.</desc>
-    <defs>
-      <clipPath id="auth-pitch-area" clipPathUnits="userSpaceOnUse"><rect x="43" y="45" width="554" height="238" rx="5"/></clipPath>
-      <linearGradient id="auth-pitch-border" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff6a2a" stop-opacity=".55"/><stop offset=".52" stop-color="#ffffff" stop-opacity=".08"/><stop offset="1" stop-color="#f43f5e" stop-opacity=".32"/></linearGradient>
-      <linearGradient id="auth-pitch-line" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff7438"/><stop offset="1" stop-color="#fb365c"/></linearGradient>
-      <linearGradient id="auth-route" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffb454" stop-opacity=".15"/><stop offset=".55" stop-color="#ff7638"/><stop offset="1" stop-color="#ff3559"/></linearGradient>
-      <radialGradient id="auth-pitch-light"><stop stop-color="#ff6638" stop-opacity=".18"/><stop offset="1" stop-color="#ff6638" stop-opacity="0"/></radialGradient>
-      <pattern id="auth-pitch-grid" width="22" height="22" patternUnits="userSpaceOnUse"><path d="M22 0H0V22" fill="none" stroke="#fff" stroke-opacity=".035" stroke-width="1"/></pattern>
-      <filter id="auth-player-glow" x="-150%" y="-150%" width="400%" height="400%"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    </defs>
-    <rect x="15" y="18" width="610" height="292" rx="24" fill="#101014" stroke="url(#auth-pitch-border)"/>
-    <rect x="16" y="19" width="608" height="290" rx="23" fill="url(#auth-pitch-grid)"/>
-    <ellipse cx="321" cy="164" rx="258" ry="131" fill="url(#auth-pitch-light)"/>
-    <g class="auth-pitch-lines" fill="none" stroke="#d7d2d5" stroke-opacity=".25" stroke-width="1.3">
-      <rect x="43" y="45" width="554" height="238" rx="5"/>
-      <path d="M320 45v238M43 111h67v106H43m554-106h-67v106h67"/>
-      <path d="M43 142h26v44H43m554-44h-26v44h26"/>
-      <circle cx="320" cy="164" r="48"/><circle cx="320" cy="164" r="2.5" fill="#d7d2d5"/>
-      <circle cx="91" cy="164" r="2.5" fill="#d7d2d5"/><circle cx="549" cy="164" r="2.5" fill="#d7d2d5"/>
-    </g>
-    <path class="auth-route auth-route-one" d="M129 210C173 202 174 133 232 145s67 52 102 20 47-68 91-46 33 33 59 20" fill="none" stroke="url(#auth-route)" stroke-width="2.5" stroke-linecap="round"/>
-    <path class="auth-route auth-route-two" d="M193 91c26 31 16 59 47 67s38-22 66-16 29 40 56 52" fill="none" stroke="#ffbd72" stroke-opacity=".75" stroke-width="1.5" stroke-dasharray="3 7" stroke-linecap="round"/>
-    <g transform="translate(129 210)"><g class="auth-player auth-player-a" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
-    <g transform="translate(232 145)"><g class="auth-player auth-player-b" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
-    <g transform="translate(334 165)"><g class="auth-player auth-player-c" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
-    <g transform="translate(425 119)"><g class="auth-player auth-player-d" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
-    <g transform="translate(484 139)"><g class="auth-player auth-player-e" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
-    <g transform="translate(184 108)"><g class="auth-player auth-player-f" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
-    <g transform="translate(276 167)"><g class="auth-player auth-player-g" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
-    <g transform="translate(362 214)"><g class="auth-player auth-player-h" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
-    <g transform="translate(511 189)"><g class="auth-player auth-player-i" filter="url(#auth-player-glow)"><circle r="13" fill="#ff6338" fill-opacity=".12" stroke="#ff7145" stroke-opacity=".6"/><circle r="6.5" fill="#ff7546"/><circle r="2" fill="#fff2e9"/></g></g>
-    <g clip-path="url(#auth-pitch-area)"><g class="auth-ball"><animateMotion dur="4.8s" repeatCount="indefinite" rotate="auto" path="M 280 165 C 294 145 311 143 328 163 S 360 187 378 164 S 410 142 430 164"/><circle r="7" fill="#fff8ef"/><path d="m-2.5-2 3-.8 2 2-1 3h-3l-1.4-2.5z" fill="#262229"/></g></g>
-    <g class="auth-scoreboard" transform="rotate(-4 487 89)">
-      <rect x="408" y="53" width="158" height="73" rx="14" fill="#17161a" fill-opacity=".9" stroke="#ffffff" stroke-opacity=".18"/>
-      <path d="M408 67h158" stroke="#ffffff" stroke-opacity=".08"/>
-      <circle class="auth-score-light" cx="426" cy="60" r="2" fill="#ffb454"/><circle class="auth-score-light auth-score-light-two" cx="548" cy="114" r="1.7" fill="#ff6648"/>
-      <text x="426" y="83" fill="#a5a1a5" font-family="Inter, sans-serif" font-size="9" font-weight="700" letter-spacing="1.8">TU PORRA</text>
-      <text x="426" y="111" fill="#fff" font-family="Space Grotesk, sans-serif" font-size="25" font-weight="700">2 <tspan fill="#ff7443">—</tspan> 1</text>
-      <rect x="518" y="94" width="29" height="14" rx="7" fill="#ff7546" fill-opacity=".13"/><text x="523" y="104" fill="#ff9a67" font-family="Inter, sans-serif" font-size="7" font-weight="700" letter-spacing=".8">LIVE</text>
-    </g>
-    <circle class="auth-pitch-particle auth-pitch-particle-a" cx="370" cy="73" r="1.5" fill="#ffb454"/><circle class="auth-pitch-particle auth-pitch-particle-b" cx="251" cy="250" r="1.5" fill="#ff6848"/><circle class="auth-pitch-particle auth-pitch-particle-c" cx="576" cy="176" r="1.2" fill="#ffb454"/>
-    <text x="43" y="299" fill="#8c858b" font-family="Inter, sans-serif" font-size="8" font-weight="700" letter-spacing="1.4">LECTURA DE JUEGO · JORNADA 01</text>
-    <text x="574" y="299" fill="#ff8b57" font-family="Inter, sans-serif" font-size="8" font-weight="700" letter-spacing="1.1" text-anchor="end">01:24</text>
-  </svg>
+  <div class="home-field auth-home-field" role="img" aria-label="Campo de fútbol de PLENO con jugadores y balón en movimiento">
+    <span class="field-label">PLENO <i>·</i> LA JORNADA EMPIEZA AQUÍ</span><span class="field-markings"></span>
+    <i class="field-player fp1"></i><i class="field-player fp2"></i><i class="field-player fp3"></i>
+    <i class="field-player fp4"></i><i class="field-player fp5"></i><i class="field-player fp6"></i>
+    <i class="field-player fp7"></i><i class="field-player fp8"></i><i class="field-player fp9"></i>
+    <i class="field-ball"></i><span class="field-caption">TU LIGA · TU PORRA</span>
+  </div>
   </div>
   <div class="auth-brand-foot"><span class="auth-live-dot"></span> TU EQUIPO. TU JORNADA. TU PORRA.</div>
   </section><section class="card auth-card" aria-labelledby="auth-title">
@@ -2640,7 +2614,7 @@ const LEGAL_PAGES = {
   },
   "/cookies": {
     title: "Política de Cookies",
-    body: `<p>PLENO no carga actualmente herramientas de analítica ni publicidad. La aplicación puede usar almacenamiento local estrictamente necesario para mantener preferencias, sesión y funcionamiento básico. Las fuentes tipográficas y servicios de autenticación/deporte pueden recibir solicitudes técnicas al utilizarlos; consulta sus políticas antes de configurar esos servicios.</p>
+    body: `<p>PLENO no carga actualmente herramientas de analítica ni publicidad. La aplicación usa almacenamiento local para la sesión y el funcionamiento básico. La elección del banner se conserva en una cookie propia estrictamente necesaria, <code>pleno_cookie_consent</code>, durante un máximo de 180 días. Las fuentes tipográficas y servicios de autenticación/deporte pueden recibir solicitudes técnicas al utilizarlos; consulta sus políticas antes de configurar esos servicios.</p>
       <h2>Preferencias</h2><p>El banner permite aceptar, rechazar o configurar cookies opcionales. En esta versión no hay cookies analíticas opcionales conectadas; por ello, aceptar analítica no activa ningún proveedor. Si se incorporan, deben cargarse únicamente tras consentimiento y esta política deberá identificar proveedor, finalidad, duración y transferencias.</p>
       <button class="btn ghost" type="button" onclick="showCookieSettings()">Configurar cookies</button>`
   },
@@ -2658,9 +2632,15 @@ function legalPage() {
   document.title = `${page.title} · PLENO`;
   return `<main class="legal-page"><a class="brand-lockup" href="/" aria-label="Volver a PLENO"><img src="/icon.svg" alt=""><span class="logo">PLENO</span></a><article class="card legal-card"><span class="round-kicker">INFORMACIÓN DEL SERVICIO</span><h1>${page.title}</h1>${page.body}<nav class="legal-links" aria-label="Documentos legales">${Object.entries(LEGAL_PAGES).map(([path, item]) => `<a href="${path}">${item.title.replace("Política de ", "").replace(" de Uso", "")}</a>`).join("")}</nav><a class="btn legal-back" href="/">Volver a PLENO</a></article></main>`;
 }
-const COOKIE_KEY = "pleno:cookie-consent:v1";
+const COOKIE_KEY = "pleno_cookie_consent";
+const LEGACY_COOKIE_KEY = "pleno:cookie-consent:v1";
 function cookiePreferences() {
-  try { return JSON.parse(localStorage.getItem(COOKIE_KEY) || "null"); }
+  const entry = document.cookie.split(";").map((cookie) => cookie.trim()).find((cookie) => cookie.startsWith(`${COOKIE_KEY}=`));
+  if (entry) {
+    try { return JSON.parse(decodeURIComponent(entry.slice(COOKIE_KEY.length + 1))); }
+    catch { return null; }
+  }
+  try { return JSON.parse(localStorage.getItem(LEGACY_COOKIE_KEY) || "null"); }
   catch { return null; }
 }
 function renderCookieBanner(configuring = false) {
@@ -2675,18 +2655,27 @@ function showCookieSettings() {
 }
 function saveCookiePreferences(acceptAll = null) {
   const analytics = acceptAll === null ? Boolean($("#cookie-analytics")?.checked) : acceptAll;
+  const preferences = { necessary: true, analytics, savedAt: new Date().toISOString() };
   try {
-    localStorage.setItem(COOKIE_KEY, JSON.stringify({ necessary: true, analytics, savedAt: new Date().toISOString() }));
+    const secure = location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${COOKIE_KEY}=${encodeURIComponent(JSON.stringify(preferences))}; Max-Age=${180 * 24 * 60 * 60}; Path=/; SameSite=Lax${secure}`;
+    if (!document.cookie.split(";").map((cookie) => cookie.trim()).some((cookie) => cookie.startsWith(`${COOKIE_KEY}=`))) {
+      throw new Error("El navegador no guardó la cookie de preferencias.");
+    }
   } catch {
     toast("No se pudo guardar tu preferencia de cookies. Revisa los permisos del navegador.", "error");
     return;
   }
+  try { localStorage.removeItem(LEGACY_COOKIE_KEY); } catch {}
   $("#cookie-consent").replaceChildren();
 }
+let lastChallengeDay = madridDate();
 let lastLocalDay = new Intl.DateTimeFormat("en-CA").format(new Date());
-function refreshOnLocalDayChange() {
+function refreshOnChallengeDayChange() {
+  const challengeDay = madridDate();
   const localDay = new Intl.DateTimeFormat("en-CA").format(new Date());
-  if (localDay === lastLocalDay) return;
+  if (challengeDay === lastChallengeDay && localDay === lastLocalDay) return;
+  lastChallengeDay = challengeDay;
   lastLocalDay = localDay;
   if (AUTH.session && S.league?.id) refreshScoutState(false);
   if (V.tab === "g") render();
@@ -2719,7 +2708,7 @@ function render() {
   const themeName = { carbon: "carbón", blanco: "claro", medianoche: "medianoche" }[S.th] || "carbón";
   const syncError = Boolean(D.matchesError || D.standingsError || D.teamsError || D.scorersError);
   const syncStale = D.matchesStale || D.standingsStale || D.teamsStale || D.scorersStale;
-  a.innerHTML = `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><button class="league-switcher" type="button" onclick="openLeaguePicker()" aria-label="Mis ligas: cambiar de liga o unirme a otra" title="Mis ligas · cambiar de liga o unirme a otra"><span class="league-switcher-label">Liga activa</span><b>${esc(S.league.name)}</b><i aria-hidden="true">⌄</i></button><span class="sp"></span><div class="top-actions"><button class="btn ghost theme-button ${S.th}" onclick="cycleTheme()" aria-label="Cambiar fondo. Tema actual: ${themeName}" title="Cambiar fondo · ${themeName}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></button><button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div><nav class="desktop-nav" aria-label="Secciones principales">${tabs.map(([k, n]) => `<button class="${V.tab === k ? "on" : ""}" onclick="switchTab('${k}')" ${V.tab === k ? 'aria-current="page"' : ""}>${n}</button>`).join("")}</nav><div class="data-sync ${syncError ? "has-error" : syncStale ? "is-stale" : ""}" aria-label="Estado de actualización de datos" title="Actualización automática: partidos cada 30 segundos, clasificación cada minuto, goleadores cada 10 minutos y clubes cada día"><i></i><span class="${freshnessClass(D.matchesStale, D.matchesError)}">${esc(freshnessLabel("Partidos", D.lastMatchesUpdate, D.matchesStale, D.matchesError))}</span><span class="${freshnessClass(D.standingsStale, D.standingsError)}">${esc(freshnessLabel("Clasificación", D.lastStandingsUpdate, D.standingsStale, D.standingsError))}</span><span class="${freshnessClass(D.teamsStale, D.teamsError)}">${esc(freshnessLabel("Clubes", D.lastTeamsUpdate, D.teamsStale, D.teamsError))}</span><span class="${freshnessClass(D.scorersStale, D.scorersError)}">${esc(freshnessLabel("Goleadores", D.lastScorersUpdate, D.scorersStale, D.scorersError))}</span></div></div><main class="tab-content" style="--tab-shift:${V.tabDirection * 1}">${body}</main>${mobileNavigation(tabs)}`;
+  a.innerHTML = `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><button class="league-switcher" type="button" onclick="openLeaguePicker()" aria-label="Mis ligas: cambiar de liga o unirme a otra" title="Mis ligas · cambiar de liga o unirme a otra"><span class="league-switcher-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.8 20 6v5.3c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6l8-3.2Z"/><path d="m8.8 12.1 2.1 2.1 4.5-4.5"/></svg></span><span class="league-switcher-copy"><span class="league-switcher-label">COMPITIENDO EN</span><b>${esc(S.league.name)}</b></span><i aria-hidden="true">⌄</i></button><span class="sp"></span><div class="top-actions"><button class="btn ghost theme-button ${S.th}" onclick="cycleTheme()" aria-label="Cambiar fondo. Tema actual: ${themeName}" title="Cambiar fondo · ${themeName}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></button><button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div><nav class="desktop-nav" aria-label="Secciones principales">${tabs.map(([k, n]) => `<button class="${V.tab === k ? "on" : ""}" onclick="switchTab('${k}')" ${V.tab === k ? 'aria-current="page"' : ""}>${n}</button>`).join("")}</nav><div class="data-sync ${syncError ? "has-error" : syncStale ? "is-stale" : ""}" aria-label="Estado de actualización de datos" title="Actualización automática: partidos cada 30 segundos, clasificación cada minuto, goleadores cada 10 minutos y clubes cada día"><i></i><span class="${freshnessClass(D.matchesStale, D.matchesError)}">${esc(freshnessLabel("Partidos", D.lastMatchesUpdate, D.matchesStale, D.matchesError))}</span><span class="${freshnessClass(D.standingsStale, D.standingsError)}">${esc(freshnessLabel("Clasificación", D.lastStandingsUpdate, D.standingsStale, D.standingsError))}</span><span class="${freshnessClass(D.teamsStale, D.teamsError)}">${esc(freshnessLabel("Clubes", D.lastTeamsUpdate, D.teamsStale, D.teamsError))}</span><span class="${freshnessClass(D.scorersStale, D.scorersError)}">${esc(freshnessLabel("Goleadores", D.lastScorersUpdate, D.scorersStale, D.scorersError))}</span></div></div><main class="tab-content" style="--tab-shift:${V.tabDirection * 1}">${body}</main>${mobileNavigation(tabs)}`;
   const topActions = a.querySelector(".top-actions");
   if (topActions) topActions.insertAdjacentHTML("afterbegin", infoButton() + profileButton());
   a.insertAdjacentHTML("beforeend", instructionsModal() + profileModal() + leaguePickerModal());
@@ -2737,7 +2726,7 @@ if (typeof document !== "undefined" && document.documentElement) {
   document.documentElement.dataset.th = S.th;
   document.addEventListener("keydown", handleInstructionsKeydown);
   renderCookieBanner();
-  render(); loadMain(); initializeAuth(); setInterval(poll, 30000); setInterval(refreshCloudPredictions, 60000); setInterval(refreshOnLocalDayChange, 30000);
+  render(); loadMain(); initializeAuth(); setInterval(poll, 30000); setInterval(refreshCloudPredictions, 60000); setInterval(refreshOnChallengeDayChange, 30000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") poll(); });
   window.addEventListener("online", () => poll());
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("/sw.js").catch((error) => console.error("No se pudo registrar el service worker de PLENO:", error));

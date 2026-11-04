@@ -59,6 +59,9 @@ begin
       and (
         answer.source_player_id = p_source_player_id
         or answer.answer_normalized = lower(regexp_replace(btrim(p_answer_normalized), '\s+', ' ', 'g'))
+        or answer.answer_normalized = any(coalesce(p_accepted_answers, '{}'))
+        or lower(regexp_replace(btrim(p_answer_normalized), '\s+', ' ', 'g')) = any(answer.accepted_answers)
+        or answer.accepted_answers && coalesce(p_accepted_answers, '{}')
       )
   ) then
     raise exception 'Player used within the last 30 days';
