@@ -92,6 +92,71 @@ $$;
 revoke all on function public.publish_daily_game_entities(jsonb) from public, anon, authenticated;
 grant execute on function public.publish_daily_game_entities(jsonb) to service_role;
 
+create table if not exists private.daily_game_replacements (
+  game text not null check (game in ('connections', 'grid', 'player')),
+  puzzle_date date not null,
+  payload jsonb not null check (jsonb_typeof(payload) = 'object'),
+  solution jsonb not null check (jsonb_typeof(solution) = 'object'),
+  reason text not null check (length(btrim(reason)) between 3 and 500),
+  updated_at timestamptz not null default now(),
+  primary key (game, puzzle_date)
+);
+revoke all on private.daily_game_replacements from public, anon, authenticated;
+grant all on private.daily_game_replacements to service_role;
+
+create table if not exists private.daily_game_rate_limits (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  game text not null check (game in ('connections', 'grid', 'player')),
+  window_started_at timestamptz not null default now(),
+  request_count smallint not null default 0,
+  primary key (user_id, game)
+);
+revoke all on private.daily_game_rate_limits from public, anon, authenticated;
+grant all on private.daily_game_rate_limits to service_role;
+
+create or replace function public.publish_daily_game_replacement(
+  p_game text,
+  p_puzzle_date date,
+  p_payload jsonb,
+  p_solution jsonb,
+  p_reason text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.role() is distinct from 'service_role' then
+    raise exception 'Service role required';
+  end if;
+  if p_game not in ('connections', 'grid', 'player')
+    or p_puzzle_date is null
+    or jsonb_typeof(p_payload) is distinct from 'object'
+    or jsonb_typeof(p_solution) is distinct from 'object'
+    or length(btrim(coalesce(p_reason, ''))) not between 3 and 500 then
+    raise exception 'Invalid daily game replacement';
+  end if;
+  if not exists (
+    select 1 from private.daily_game_puzzles puzzle
+    where puzzle.game = p_game and puzzle.puzzle_date = p_puzzle_date
+  ) then
+    raise exception 'Cannot replace an unpublished daily game';
+  end if;
+  insert into private.daily_game_replacements (game, puzzle_date, payload, solution, reason)
+  values (p_game, p_puzzle_date, p_payload, p_solution, btrim(p_reason))
+  on conflict (game, puzzle_date) do update
+    set payload = excluded.payload,
+        solution = excluded.solution,
+        reason = excluded.reason,
+        updated_at = now();
+end;
+$$;
+revoke all on function public.publish_daily_game_replacement(text, date, jsonb, jsonb, text)
+  from public, anon, authenticated;
+grant execute on function public.publish_daily_game_replacement(text, date, jsonb, jsonb, text)
+  to service_role;
+
 create table if not exists public.daily_game_attempts (
   game text not null check (game in ('connections', 'grid', 'player')),
   puzzle_date date not null,
@@ -131,6 +196,24 @@ drop policy if exists "Players read their daily game reports" on public.daily_ga
 create policy "Players read their daily game reports"
   on public.daily_game_reports for select to authenticated
   using (user_id = (select auth.uid()));
+
+create table if not exists public.daily_game_xp (
+  league_id uuid not null references public.leagues(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  game text not null check (game in ('connections', 'grid', 'player')),
+  puzzle_date date not null,
+  points integer not null check (points >= 0),
+  updated_at timestamptz not null default now(),
+  primary key (league_id, user_id, game, puzzle_date)
+);
+alter table public.daily_game_xp enable row level security;
+revoke all on public.daily_game_xp from public, anon, authenticated;
+grant select on public.daily_game_xp to authenticated;
+drop policy if exists "League members read daily game XP" on public.daily_game_xp;
+create policy "League members read daily game XP"
+  on public.daily_game_xp for select to authenticated
+  using (public.is_league_member(league_id));
+grant all on public.daily_game_xp to service_role;
 
 create or replace function public.report_daily_game_error(
   p_game text,
@@ -187,13 +270,14 @@ begin
         'tiles', coalesce((
           select jsonb_agg(jsonb_build_object('id', tile.entity_id, 'name', entity.display_name)
             order by tile.ordinality)
-          from jsonb_array_elements_text(puzzle.payload->'tiles') with ordinality as tile(entity_id, ordinality)
+          from jsonb_array_elements_text(coalesce(replacement.payload, puzzle.payload)->'tiles')
+            with ordinality as tile(entity_id, ordinality)
           join private.daily_game_entities entity on entity.entity_id = tile.entity_id
         ), '[]'::jsonb)
       )
       when 'grid' then jsonb_build_object(
-        'rows', puzzle.payload->'rows',
-        'columns', puzzle.payload->'columns'
+        'rows', coalesce(replacement.payload, puzzle.payload)->'rows',
+        'columns', coalesce(replacement.payload, puzzle.payload)->'columns'
       )
       else '{}'::jsonb
     end,
@@ -218,6 +302,8 @@ begin
   left join public.daily_game_attempts attempt
     on attempt.game = puzzle.game and attempt.puzzle_date = puzzle.puzzle_date
     and attempt.user_id = current_user_id
+  left join private.daily_game_replacements replacement
+    on replacement.game = puzzle.game and replacement.puzzle_date = puzzle.puzzle_date
   where puzzle.puzzle_date = p_puzzle_date;
   return daily_games;
 end;
@@ -260,6 +346,51 @@ $$;
 revoke all on function public.get_daily_games_history(text, smallint) from public, anon;
 grant execute on function public.get_daily_games_history(text, smallint) to authenticated;
 
+create or replace function public.get_daily_games_leaderboard(
+  p_league_id uuid,
+  p_period text
+)
+returns table(user_id uuid, display_name text, points bigint, games bigint, position bigint)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  today_madrid date := (now() at time zone 'Europe/Madrid')::date;
+  period_start date;
+begin
+  if (select auth.uid()) is null or not public.is_league_member(p_league_id) then
+    raise exception 'League membership required';
+  end if;
+  if p_period is null or p_period not in ('daily', 'weekly') then
+    raise exception 'Invalid leaderboard period';
+  end if;
+  period_start := case when p_period = 'daily' then today_madrid
+    else today_madrid - extract(isodow from today_madrid)::integer + 1 end;
+  return query
+    with totals as (
+      select member.user_id,
+        member.display_name,
+        coalesce(sum(xp.points), 0)::bigint as total_points,
+        count(xp.game)::bigint as completed_games
+      from public.league_members member
+      left join public.daily_game_xp xp
+        on xp.league_id = member.league_id
+        and xp.user_id = member.user_id
+        and xp.puzzle_date between period_start and today_madrid
+      where member.league_id = p_league_id
+      group by member.user_id, member.display_name
+    )
+    select totals.user_id, totals.display_name, totals.total_points, totals.completed_games,
+      rank() over (order by totals.total_points desc, totals.completed_games desc, totals.display_name)::bigint
+    from totals
+    order by total_points desc, completed_games desc, totals.display_name;
+end;
+$$;
+revoke all on function public.get_daily_games_leaderboard(uuid, text) from public, anon;
+grant execute on function public.get_daily_games_leaderboard(uuid, text) to authenticated;
+
 create or replace function public.submit_daily_game_guess(
   p_game text,
   p_puzzle_date date,
@@ -273,6 +404,7 @@ as $$
 declare
   current_user_id uuid := (select auth.uid());
   puzzle private.daily_game_puzzles%rowtype;
+  replacement private.daily_game_replacements%rowtype;
   attempt public.daily_game_attempts%rowtype;
   guess_id text;
   guess_name text;
@@ -289,6 +421,7 @@ declare
   guess_attributes jsonb;
   comparisons jsonb;
   player_name text;
+  request_count smallint;
   is_correct boolean := false;
 begin
   if current_user_id is null then raise exception 'Authentication required'; end if;
@@ -296,9 +429,38 @@ begin
     or jsonb_typeof(p_guess) is distinct from 'object' then
     raise exception 'Invalid daily game guess';
   end if;
+  insert into private.daily_game_rate_limits as rate_limit
+    (user_id, game, window_started_at, request_count)
+  values (current_user_id, p_game, now(), 1)
+  on conflict (user_id, game) do update
+    set window_started_at = case
+          when rate_limit.window_started_at <= now() - interval '1 minute'
+            then now()
+          else rate_limit.window_started_at
+        end,
+        request_count = case
+          when rate_limit.window_started_at <= now() - interval '1 minute'
+            then 1
+          else least(rate_limit.request_count + 1, 21)
+        end
+  returning rate_limit.request_count into request_count;
+  if request_count > 20 then
+    return jsonb_build_object('error', 'Has enviado demasiados intentos. Espera un minuto antes de volver a jugar.');
+  end if;
+  if p_puzzle_date is null
+    or p_puzzle_date > (now() at time zone 'Europe/Madrid')::date
+    or p_puzzle_date < (now() at time zone 'Europe/Madrid')::date - 365 then
+    raise exception 'Puzzle date is outside the playable archive';
+  end if;
   select * into puzzle from private.daily_game_puzzles
   where game = p_game and puzzle_date = p_puzzle_date;
   if not found then raise exception 'Daily game is unavailable'; end if;
+  select * into replacement from private.daily_game_replacements
+  where game = p_game and puzzle_date = p_puzzle_date;
+  if found then
+    puzzle.payload := replacement.payload;
+    puzzle.solution := replacement.solution;
+  end if;
 
   insert into public.daily_game_attempts (game, puzzle_date, user_id, progress, streak_eligible)
   values (
@@ -345,7 +507,8 @@ begin
         ), '[]'::jsonb)
       );
       revealed_groups := revealed_groups || jsonb_build_array(selected_group);
-      attempt.progress := jsonb_build_object('solved_groups', solved_groups);
+      attempt.progress := coalesce(attempt.progress, '{}'::jsonb) ||
+        jsonb_build_object('solved_groups', solved_groups);
     else
       select count(*) into matched_count
       from jsonb_array_elements(puzzle.solution->'groups') group_data
@@ -361,6 +524,11 @@ begin
       'last_correct', is_correct,
       'one_away', (not is_correct and matched_count = 3),
       'last_group', case when is_correct then selected_group else null end,
+      'guesses', coalesce(attempt.progress->'guesses', '[]'::jsonb) ||
+        jsonb_build_array(jsonb_build_object(
+          'correct', is_correct,
+          'one_away', (not is_correct and matched_count = 3)
+        )),
       'revealed_groups', revealed_groups
     );
     if attempt.solved then
@@ -419,7 +587,9 @@ begin
     attempt.progress := jsonb_build_object(
       'picks', picks,
       'score', attempt.score,
-      'last_correct', is_correct
+      'last_correct', is_correct,
+      'guesses', coalesce(attempt.progress->'guesses', '[]'::jsonb) ||
+        jsonb_build_array(jsonb_build_object('correct', is_correct))
     );
     attempt.attempts_count := attempt.attempts_count + 1;
     attempt.solved := jsonb_object_length(picks) = 9 or attempt.attempts_count >= 9;
@@ -450,12 +620,12 @@ begin
     end if;
     is_correct := guess_id = puzzle.solution->>'player';
     comparisons := jsonb_build_array(
-      jsonb_build_object('field','club','label','Club','color',case when target_attributes->>'club' = guess_attributes->>'club' then 'green' else 'red' end),
-      jsonb_build_object('field','country','label','País','color',case when target_attributes->>'country' = guess_attributes->>'country' then 'green' else 'red' end),
-      jsonb_build_object('field','position','label','Posición','color',case when target_attributes->>'position' = guess_attributes->>'position' then 'green' else 'red' end),
-      jsonb_build_object('field','age','label','Edad','color',case when target_attributes->>'age' = guess_attributes->>'age' then 'green' when abs((target_attributes->>'age')::integer - (guess_attributes->>'age')::integer) <= 2 then 'yellow' else 'red' end,'direction',case when (guess_attributes->>'age')::integer < (target_attributes->>'age')::integer then 'up' when (guess_attributes->>'age')::integer > (target_attributes->>'age')::integer then 'down' else 'equal' end),
-      jsonb_build_object('field','shirt_number','label','Dorsal','color',case when target_attributes->>'shirt_number' = guess_attributes->>'shirt_number' then 'green' when abs((target_attributes->>'shirt_number')::integer - (guess_attributes->>'shirt_number')::integer) <= 3 then 'yellow' else 'red' end,'direction',case when (guess_attributes->>'shirt_number')::integer < (target_attributes->>'shirt_number')::integer then 'up' when (guess_attributes->>'shirt_number')::integer > (target_attributes->>'shirt_number')::integer then 'down' else 'equal' end),
-      jsonb_build_object('field','height_cm','label','Altura','color',case when target_attributes->>'height_cm' = guess_attributes->>'height_cm' then 'green' when abs((target_attributes->>'height_cm')::integer - (guess_attributes->>'height_cm')::integer) <= 5 then 'yellow' else 'red' end,'direction',case when (guess_attributes->>'height_cm')::integer < (target_attributes->>'height_cm')::integer then 'up' when (guess_attributes->>'height_cm')::integer > (target_attributes->>'height_cm')::integer then 'down' else 'equal' end)
+      jsonb_build_object('field','club','label','Club','value',guess_attributes->>'club','color',case when target_attributes->>'club' = guess_attributes->>'club' then 'green' else 'red' end),
+      jsonb_build_object('field','country','label','País','value',guess_attributes->>'country','color',case when target_attributes->>'country' = guess_attributes->>'country' then 'green' else 'red' end),
+      jsonb_build_object('field','position','label','Posición','value',guess_attributes->>'position','color',case when target_attributes->>'position' = guess_attributes->>'position' then 'green' else 'red' end),
+      jsonb_build_object('field','age','label','Edad','value',guess_attributes->>'age','color',case when target_attributes->>'age' = guess_attributes->>'age' then 'green' when abs((target_attributes->>'age')::integer - (guess_attributes->>'age')::integer) <= 2 then 'yellow' else 'red' end,'direction',case when (guess_attributes->>'age')::integer < (target_attributes->>'age')::integer then 'up' when (guess_attributes->>'age')::integer > (target_attributes->>'age')::integer then 'down' else 'equal' end),
+      jsonb_build_object('field','shirt_number','label','Dorsal','value',guess_attributes->>'shirt_number','color',case when target_attributes->>'shirt_number' = guess_attributes->>'shirt_number' then 'green' when abs((target_attributes->>'shirt_number')::integer - (guess_attributes->>'shirt_number')::integer) <= 3 then 'yellow' else 'red' end,'direction',case when (guess_attributes->>'shirt_number')::integer < (target_attributes->>'shirt_number')::integer then 'up' when (guess_attributes->>'shirt_number')::integer > (target_attributes->>'shirt_number')::integer then 'down' else 'equal' end),
+      jsonb_build_object('field','height_cm','label','Altura','value',guess_attributes->>'height_cm','color',case when target_attributes->>'height_cm' = guess_attributes->>'height_cm' then 'green' when abs((target_attributes->>'height_cm')::integer - (guess_attributes->>'height_cm')::integer) <= 5 then 'yellow' else 'red' end,'direction',case when (guess_attributes->>'height_cm')::integer < (target_attributes->>'height_cm')::integer then 'up' when (guess_attributes->>'height_cm')::integer > (target_attributes->>'height_cm')::integer then 'down' else 'equal' end)
     );
     attempt.attempts_count := attempt.attempts_count + 1;
     attempt.solved := is_correct or attempt.attempts_count >= 8;
@@ -484,6 +654,15 @@ begin
     progress = attempt.progress,
     updated_at = attempt.updated_at
   where game = p_game and puzzle_date = p_puzzle_date and user_id = current_user_id;
+
+  insert into public.daily_game_xp (league_id, user_id, game, puzzle_date, points)
+  select member.league_id, current_user_id, p_game, p_puzzle_date, attempt.score
+  from public.league_members member
+  where member.user_id = current_user_id
+    and p_puzzle_date = (now() at time zone 'Europe/Madrid')::date
+  on conflict (league_id, user_id, game, puzzle_date) do update
+    set points = greatest(public.daily_game_xp.points, excluded.points),
+        updated_at = now();
 
   return jsonb_build_object(
     'game', p_game,

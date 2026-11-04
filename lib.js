@@ -7,6 +7,46 @@ function pts(p, r, joker) {
   return joker ? base * 2 : base;
 }
 
+function dailyGameSummary(history, today) {
+  const completed = history.filter((entry) => entry.completed);
+  const wins = completed.filter((entry) => entry.outcome === "won");
+  const streakDates = new Set(wins
+    .filter((entry) => entry.streak_eligible !== false)
+    .map((entry) => entry.date));
+  const priorDay = (date) => {
+    const value = new Date(`${date}T12:00:00Z`);
+    value.setUTCDate(value.getUTCDate() - 1);
+    return value.toISOString().slice(0, 10);
+  };
+  let currentStreak = 0;
+  const playedToday = completed.some((entry) =>
+    entry.date === today && entry.streak_eligible !== false
+  );
+  let cursor = streakDates.has(today) ? today : playedToday ? "" : priorDay(today);
+  while (streakDates.has(cursor)) {
+    currentStreak++;
+    cursor = priorDay(cursor);
+  }
+  let longestStreak = 0;
+  let runningStreak = 0;
+  let previousDate = "";
+  for (const date of [...streakDates].sort()) {
+    runningStreak = previousDate === priorDay(date) ? runningStreak + 1 : 1;
+    longestStreak = Math.max(longestStreak, runningStreak);
+    previousDate = date;
+  }
+  return {
+    played: completed.length,
+    wins: wins.length,
+    winRate: completed.length ? Math.round(wins.length * 100 / completed.length) : 0,
+    currentStreak,
+    longestStreak,
+    distribution: Array.from({ length: 9 }, (_, index) =>
+      wins.filter((entry) => entry.attempts_count === index + 1).length
+    )
+  };
+}
+
 const pois = (l, k) => { let p = Math.exp(-l); for (let i = 1; i <= k; i++) p *= l / i; return p; };
 
 // Sugerencia basada en goles a favor/en contra de cada club como local y como visitante (modelo de Poisson).
@@ -38,4 +78,4 @@ function dec(s) {
   for (const [md, id] of Object.entries(o.j || {})) if (/^\d+$/.test(md) && /^\d+$/.test(String(id))) clean.j[md] = +id;
   return clean;
 }
-if (typeof module !== "undefined") module.exports = { pts, predict, enc, dec };
+if (typeof module !== "undefined") module.exports = { pts, dailyGameSummary, predict, enc, dec };

@@ -17,6 +17,41 @@ function entityId(value) {
   return typeof value === "string" && /^Q\d+$/.test(value);
 }
 
+export function validateCatalog(catalog) {
+  assert(catalog && typeof catalog === "object", "El catálogo debe ser un objeto.");
+  assert(Array.isArray(catalog.entities) && catalog.entities.length > 0,
+    "El catálogo necesita entidades verificadas.");
+  const ids = catalog.entities.map((entity) => entity?.id);
+  const names = catalog.entities.map((entity) =>
+    typeof entity?.name === "string" ? entity.name.trim().toLocaleLowerCase("es") : ""
+  );
+  assert(ids.every(entityId) && unique(ids), "El catálogo contiene QID inválidos o duplicados.");
+  assert(names.every((name) => name.length > 0 && name.length <= 100) && unique(names),
+    "El catálogo contiene nombres vacíos, demasiado largos o ambiguos.");
+  assert(catalog.entities.every((entity) =>
+    entity.attributes === undefined ||
+    (entity.attributes && typeof entity.attributes === "object" && !Array.isArray(entity.attributes))
+  ), "Los atributos de cada entidad deben ser un objeto.");
+  const entitySet = new Set(ids);
+  for (const game of GAMES) {
+    assert(Array.isArray(catalog[game]) && catalog[game].length > 0,
+      `El catálogo no contiene candidatos para ${game}.`);
+    for (const candidate of catalog[game]) {
+      const referenced = game === "connections"
+        ? [...(candidate?.public?.tiles || []),
+          ...(Array.isArray(candidate?.solution?.groups)
+            ? candidate.solution.groups.flatMap((group) => group?.members || [])
+            : [])]
+        : game === "grid"
+          ? (Array.isArray(candidate?.solution?.cells) ? candidate.solution.cells.flat() : [])
+          : [candidate?.solution?.player];
+      assert(referenced.every((id) => entitySet.has(id)),
+        `El puzzle ${candidate.id || "(sin ID)"} de ${game} referencia entidades ausentes del catálogo.`);
+    }
+  }
+  return catalog;
+}
+
 function countPartitions(tiles, groups) {
   const tileSet = new Set(tiles);
   const candidates = groups.filter((group) =>
@@ -180,6 +215,7 @@ export function preparePuzzle(game, candidate, date, secret) {
 export function buildSchedule(catalog, startDate, days, secret, existing = {}) {
   assert(typeof secret === "string" && secret.length >= 32, "PUZZLE_SEED_SECRET debe tener al menos 32 caracteres.");
   assert(Number.isInteger(days) && days > 0 && days <= 60, "El calendario debe tener entre 1 y 60 días.");
+  validateCatalog(catalog);
   const dates = Array.from({ length: days }, (_, index) => {
     const date = new Date(`${startDate}T12:00:00Z`);
     date.setUTCDate(date.getUTCDate() + index);

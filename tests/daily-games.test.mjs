@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSchedule, difficultyForDate, madridDate, preparePuzzle } from "../tools/puzzle-pipeline.mjs";
+import { buildSchedule, difficultyForDate, madridDate, preparePuzzle, validateCatalog } from "../tools/puzzle-pipeline.mjs";
 
 const secret = "test-only-seed-secret-that-is-never-published";
 const qid = (n) => `Q${n}`;
@@ -104,12 +104,23 @@ test("player answers never appear in the public payload", () => {
   assert.equal(JSON.stringify(puzzle.payload).includes(candidate.public.player.club), false);
 });
 
+test("catalog rejects duplicate display names and missing answer entities", () => {
+  const duplicateNameCatalog = catalogForThirtyDays();
+  duplicateNameCatalog.entities[1].name = duplicateNameCatalog.entities[0].name;
+  assert.throws(() => validateCatalog(duplicateNameCatalog), /nombres vacíos.*ambiguos/);
+
+  const missingEntityCatalog = catalogForThirtyDays();
+  const missingId = missingEntityCatalog.connections[0].solution.groups[0].members[0];
+  missingEntityCatalog.entities = missingEntityCatalog.entities.filter((entity) => entity.id !== missingId);
+  assert.throws(() => validateCatalog(missingEntityCatalog), /entidades ausentes/);
+});
+
 test("Connections rejects ambiguous partitions", () => {
   const candidate = catalogForThirtyDays().connections[0];
-  candidate.possible_groups.push({
+  candidate.possible_groups = [...candidate.possible_groups, {
     category: "Categoría ambigua",
     color: "yellow",
     members: candidate.public.tiles.slice(0, 4)
-  });
+  }];
   assert.throws(() => preparePuzzle("connections", candidate, "2026-01-05", secret), /única solución/);
 });

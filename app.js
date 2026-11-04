@@ -32,15 +32,21 @@ const GAME = { loading: false, busy: false, spinning: false, spinStage: "", whee
 const DAILY_GAMES = {
   date: "",
   selected: "connections",
+  selectedLeaderboard: "daily",
   items: {},
   history: { connections: [], grid: [], player: [] },
+  leaderboards: { daily: [], weekly: [] },
+  leagueId: "",
   selection: [],
   selectedCell: null,
   loading: false,
   busy: false,
   loaded: false,
   requestId: 0,
-  error: ""
+  error: "",
+  actionError: "",
+  offline: false,
+  cacheWarning: ""
 };
 const WHEEL_SECTIONS = [
   { type: "boots_gold", title: "Botas de Oro", subtitle: "+5 puntos" },
@@ -678,12 +684,18 @@ async function handleAuthSession(session) {
     DAILY_GAMES.date = "";
     DAILY_GAMES.items = {};
     DAILY_GAMES.history = { connections: [], grid: [], player: [] };
+    DAILY_GAMES.leaderboards = { daily: [], weekly: [] };
+    DAILY_GAMES.leagueId = "";
+    DAILY_GAMES.selectedLeaderboard = "daily";
     DAILY_GAMES.selection = [];
     DAILY_GAMES.selectedCell = null;
     DAILY_GAMES.loading = false;
     DAILY_GAMES.busy = false;
     DAILY_GAMES.loaded = false;
     DAILY_GAMES.error = "";
+    DAILY_GAMES.actionError = "";
+    DAILY_GAMES.offline = false;
+    DAILY_GAMES.cacheWarning = "";
   }
   if (session) {
     try { await loadCloudLeague(); }
@@ -1876,10 +1888,40 @@ const DAILY_GAME_INFO = {
   grid: { title: "Cruce 3×3", subtitle: "Completa cada cruce con un futbolista válido.", icon: "▤" },
   player: { title: "Adivina al crack", subtitle: "Descubre el jugador con pistas comparativas.", icon: "?" }
 };
+function dailyGamesCacheKey(userId, date) {
+  return `pleno:daily-games:v1:${userId}:${date}`;
+}
+function dailyGamesLastPlayedKey(userId) {
+  return `pleno:daily-games:last-played:v1:${userId}`;
+}
+function readDailyGamesCache(date) {
+  try {
+    const raw = localStorage.getItem(dailyGamesCacheKey(AUTH.session?.user?.id, date));
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    return cached?.version === 1 && cached.date === date &&
+      cached.items && typeof cached.items === "object" &&
+      cached.history && typeof cached.history === "object" ? cached : null;
+  } catch (error) {
+    DAILY_GAMES.cacheWarning = `No se pudo leer el puzzle guardado sin conexión: ${errorText(error)}`;
+    return null;
+  }
+}
+function readLastPlayedDailyGamesCache() {
+  try {
+    const userId = AUTH.session?.user?.id;
+    const date = localStorage.getItem(dailyGamesLastPlayedKey(userId));
+    return date && date <= madridDate() ? readDailyGamesCache(date) : null;
+  } catch (error) {
+    DAILY_GAMES.cacheWarning = `No se pudo encontrar el último puzzle guardado: ${errorText(error)}`;
+    return null;
+  }
+}
 async function loadDailyGameHub(force = false) {
   if (!AUTH.client || !AUTH.session || (DAILY_GAMES.loading && !force)) return;
   const date = DAILY_GAMES.date || madridDate();
-  if (!force && DAILY_GAMES.loaded && DAILY_GAMES.date === date) return;
+  const leagueId = S.league?.id || "";
+  if (!force && DAILY_GAMES.loaded && DAILY_GAMES.date === date && DAILY_GAMES.leagueId === leagueId) return;
   const requestId = ++DAILY_GAMES.requestId;
   DAILY_GAMES.loading = true;
   DAILY_GAMES.error = "";
@@ -1889,7 +1931,9 @@ async function loadDailyGameHub(force = false) {
       AUTH.client.rpc("get_daily_games_for_day", { p_puzzle_date: date }),
       ...Object.keys(DAILY_GAME_INFO).map((game) =>
         AUTH.client.rpc("get_daily_games_history", { p_game: game, p_limit: 365 })
-      )
+      ),
+      AUTH.client.rpc("get_daily_games_leaderboard", { p_league_id: leagueId, p_period: "daily" }),
+      AUTH.client.rpc("get_daily_games_leaderboard", { p_league_id: leagueId, p_period: "weekly" })
     ]);
     if (requestId !== DAILY_GAMES.requestId) return;
     if (error) throw error;
@@ -1899,15 +1943,55 @@ async function loadDailyGameHub(force = false) {
       if (historyResults[index].error) throw historyResults[index].error;
       history[game] = historyResults[index].data || [];
     }
+    if (historyResults[3].error) throw historyResults[3].error;
+    if (historyResults[4].error) throw historyResults[4].error;
     DAILY_GAMES.items = items;
     DAILY_GAMES.history = history;
+    DAILY_GAMES.leaderboards = {
+      daily: historyResults[3].data || [],
+      weekly: historyResults[4].data || []
+    };
+    DAILY_GAMES.leagueId = leagueId;
     DAILY_GAMES.loaded = true;
+    DAILY_GAMES.offline = false;
+    DAILY_GAMES.actionError = "";
+    try {
+      localStorage.setItem(dailyGamesCacheKey(AUTH.session.user.id, date), JSON.stringify({
+        version: 1,
+        date,
+        items,
+        history,
+        leagueId,
+        leaderboards: DAILY_GAMES.leaderboards
+      }));
+      DAILY_GAMES.cacheWarning = "";
+    } catch (error) {
+      DAILY_GAMES.cacheWarning = `No se pudo guardar una copia para jugar sin conexión: ${errorText(error)}`;
+    }
   } catch (error) {
     if (requestId !== DAILY_GAMES.requestId) return;
     const message = errorText(error);
-    DAILY_GAMES.error = /get_daily_games_for_day|get_daily_games_history|schema cache|PGRST202|42883/i.test(message)
-      ? "Falta ejecutar supabase-daily-games.sql en Supabase para instalar los juegos diarios."
-      : `No se pudieron cargar los juegos diarios: ${message}`;
+    const connectionUnavailable = navigator.onLine === false ||
+      /failed to fetch|fetch failed|networkerror|network request failed|timeout|load failed/i.test(message);
+    const cached = connectionUnavailable
+      ? readDailyGamesCache(date) || readLastPlayedDailyGamesCache()
+      : null;
+    if (cached) {
+      DAILY_GAMES.date = cached.date;
+      DAILY_GAMES.items = cached.items;
+      DAILY_GAMES.history = cached.history;
+      DAILY_GAMES.leaderboards = cached.leagueId === leagueId
+        ? cached.leaderboards || { daily: [], weekly: [] }
+        : { daily: [], weekly: [] };
+      DAILY_GAMES.leagueId = leagueId;
+      DAILY_GAMES.loaded = true;
+      DAILY_GAMES.offline = true;
+      DAILY_GAMES.error = `Sin conexión: se muestra el último puzzle guardado. Las respuestas no se pueden validar hasta volver a conectarte. (${message})`;
+    } else {
+      DAILY_GAMES.error = /get_daily_games_for_day|get_daily_games_history|schema cache|PGRST202|42883/i.test(message)
+        ? "Falta ejecutar supabase-daily-games.sql en Supabase para instalar los juegos diarios."
+        : `No se pudieron cargar los juegos diarios: ${message}`;
+    }
   } finally {
     if (requestId === DAILY_GAMES.requestId) {
       DAILY_GAMES.loading = false;
@@ -1920,6 +2004,20 @@ function setDailyGame(game) {
   DAILY_GAMES.selected = game;
   DAILY_GAMES.selection = [];
   DAILY_GAMES.selectedCell = null;
+  DAILY_GAMES.actionError = "";
+  const item = DAILY_GAMES.items[game];
+  if (item?.progress?.attempts_count > 0) {
+    try {
+      localStorage.setItem(dailyGamesLastPlayedKey(AUTH.session.user.id), DAILY_GAMES.date);
+    } catch (error) {
+      DAILY_GAMES.cacheWarning = `No se pudo recordar tu último puzzle jugado: ${errorText(error)}`;
+    }
+  }
+  render();
+}
+function setDailyLeaderboard(period) {
+  if (!["daily", "weekly"].includes(period)) return;
+  DAILY_GAMES.selectedLeaderboard = period;
   render();
 }
 function toggleDailyConnectionTile(id) {
@@ -1943,11 +2041,11 @@ async function submitDailyGameGuess(event) {
   event?.preventDefault();
   const game = DAILY_GAMES.selected;
   const item = DAILY_GAMES.items[game];
-  if (!item || DAILY_GAMES.busy || item.progress?.solved) return;
+  if (!item || DAILY_GAMES.busy || DAILY_GAMES.offline || item.progress?.solved) return;
   let guess;
   if (game === "connections") {
     if (DAILY_GAMES.selection.length !== 4) {
-      DAILY_GAMES.error = "Selecciona exactamente cuatro fichas.";
+      DAILY_GAMES.actionError = "Selecciona exactamente cuatro fichas.";
       render();
       return;
     }
@@ -1955,13 +2053,13 @@ async function submitDailyGameGuess(event) {
   } else {
     const answer = $("#daily-game-answer")?.value.trim();
     if (!answer) {
-      DAILY_GAMES.error = "Escribe el nombre de un jugador.";
+      DAILY_GAMES.actionError = "Escribe el nombre de un jugador.";
       render();
       return;
     }
     if (game === "grid") {
       if (!Number.isInteger(DAILY_GAMES.selectedCell)) {
-        DAILY_GAMES.error = "Elige primero una casilla de la cuadrícula.";
+        DAILY_GAMES.actionError = "Elige primero una casilla de la cuadrícula.";
         render();
         return;
       }
@@ -1971,42 +2069,51 @@ async function submitDailyGameGuess(event) {
     }
   }
   DAILY_GAMES.busy = true;
-  DAILY_GAMES.error = "";
+  DAILY_GAMES.actionError = "";
   render();
   try {
-    const { error } = await AUTH.client.rpc("submit_daily_game_guess", {
+    const { data, error } = await AUTH.client.rpc("submit_daily_game_guess", {
       p_game: game,
       p_puzzle_date: DAILY_GAMES.date,
       p_guess: guess
     });
     if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    if (data?.progress) {
+      DAILY_GAMES.items[game] = {
+        ...item,
+        progress: { ...item.progress, ...data }
+      };
+      try {
+        localStorage.setItem(dailyGamesLastPlayedKey(AUTH.session.user.id), DAILY_GAMES.date);
+        localStorage.setItem(dailyGamesCacheKey(AUTH.session.user.id, DAILY_GAMES.date), JSON.stringify({
+          version: 1,
+          date: DAILY_GAMES.date,
+          items: DAILY_GAMES.items,
+          history: DAILY_GAMES.history,
+          leagueId: DAILY_GAMES.leagueId,
+          leaderboards: DAILY_GAMES.leaderboards
+        }));
+      } catch (storageError) {
+        DAILY_GAMES.cacheWarning = `No se pudo guardar el último progreso para uso sin conexión: ${errorText(storageError)}`;
+      }
+    }
     DAILY_GAMES.selection = [];
     DAILY_GAMES.selectedCell = null;
     await loadDailyGameHub(true);
     navigator.vibrate?.(game === "connections" ? [25, 30, 45] : 25);
   } catch (error) {
-    DAILY_GAMES.error = `No se pudo validar la respuesta: ${errorText(error)}`;
+    DAILY_GAMES.actionError = `No se pudo validar la respuesta: ${errorText(error)}`;
   } finally {
     DAILY_GAMES.busy = false;
     if (V.tab === "g") render();
   }
 }
 function dailyGameStreak(game) {
-  const wins = new Set((DAILY_GAMES.history[game] || [])
-    .filter((entry) => entry.streak_eligible !== false && entry.outcome === "won")
-    .map((entry) => entry.date));
-  const today = madridDate();
-  const yesterdayDate = new Date(`${today}T12:00:00Z`);
-  yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
-  let current = wins.has(today) ? today : yesterdayDate.toISOString().slice(0, 10);
-  let streak = 0;
-  while (wins.has(current)) {
-    streak++;
-    const previous = new Date(`${current}T12:00:00Z`);
-    previous.setUTCDate(previous.getUTCDate() - 1);
-    current = previous.toISOString().slice(0, 10);
-  }
-  return streak;
+  return dailyGameSummary(DAILY_GAMES.history[game] || [], madridDate()).currentStreak;
+}
+function dailyGameStats(game) {
+  return dailyGameSummary(DAILY_GAMES.history[game] || [], madridDate());
 }
 function nextMadridMidnight() {
   const tomorrow = new Date(`${madridDate()}T12:00:00Z`);
@@ -2052,7 +2159,16 @@ function dailyGameShare(game) {
     : game === "grid"
       ? `${Object.keys(progress.picks || {}).length}/9`
       : `${item.progress.attempts_count}/8`;
-  const result = `PLENO ${info.title} · ${item.date}\n${progress.outcome === "won" ? "✅" : "⬜"} ${score}\n${location.origin}/`;
+  const marks = game === "connections"
+    ? (progress.guesses || []).map((guess) => guess.correct ? "🟩" : guess.one_away ? "🟨" : "⬜").join("")
+    : game === "grid"
+      ? (progress.guesses || []).map((guess) => guess.correct ? "🟩" : "⬜").join("")
+      : (progress.guesses || []).map((guess) =>
+        (guess.comparisons || []).map((comparison) =>
+          comparison.color === "green" ? "🟩" : comparison.color === "yellow" ? "🟨" : "⬜"
+        ).join("")
+      ).join("\n");
+  const result = `PLENO ${info.title} · ${item.date}\n${progress.outcome === "won" ? "✅" : "⬜"} ${score}\n${marks}\n${location.origin}/`;
   if (navigator.share) {
     navigator.share({ title: "Mi resultado en PLENO", text: result }).catch((error) => {
       if (error.name !== "AbortError") toast(`No se pudo compartir: ${error.message}`, "error");
@@ -2086,10 +2202,15 @@ function setDailyGameDate(value) {
   DAILY_GAMES.items = {};
   DAILY_GAMES.loaded = false;
   DAILY_GAMES.error = "";
+  DAILY_GAMES.actionError = "";
+  DAILY_GAMES.offline = false;
+  DAILY_GAMES.selection = [];
+  DAILY_GAMES.selectedCell = null;
   loadDailyGameHub(true);
 }
 function dailyGamePanel() {
-  if (!DAILY_GAMES.loaded && !DAILY_GAMES.loading && !DAILY_GAMES.error) {
+  if ((!DAILY_GAMES.loaded || DAILY_GAMES.leagueId !== (S.league?.id || "")) &&
+      !DAILY_GAMES.loading && !DAILY_GAMES.error) {
     DAILY_GAMES.date ||= madridDate();
     queueMicrotask(() => loadDailyGameHub());
   }
@@ -2105,10 +2226,15 @@ function dailyGamePanel() {
     const streak = dailyGameStreak(game);
     return `<button class="daily-game-card ${selected === game ? "is-selected" : ""}" type="button" onclick="setDailyGame('${game}')" aria-pressed="${selected === game}"><span class="daily-game-icon" aria-hidden="true">${gameInfo.icon}</span><b>${gameInfo.title}</b><small>${gameItem ? done ? "Completado" : "Pendiente" : "En preparación"}</small><span class="daily-game-streak">🔥 ${streak} ${streak === 1 ? "día" : "días"}</span></button>`;
   }).join("");
+  const stats = dailyGameStats(selected);
+  const maxDistribution = Math.max(1, ...stats.distribution);
+  const statsPanel = `<section class="daily-stats" aria-label="Estadísticas de ${esc(info.title)}"><div><b>${stats.played}</b><span>Partidas</span></div><div><b>${stats.winRate}%</b><span>Victorias</span></div><div><b>${stats.currentStreak}</b><span>Racha actual</span></div><div><b>${stats.longestStreak}</b><span>Racha máxima</span></div><div class="daily-stats-distribution" aria-label="Distribución de victorias por intentos">${stats.distribution.map((count, index) => `<span title="${index + 1} intentos: ${count} victorias" aria-label="${index + 1} intentos: ${count} victorias"><i style="height:${Math.max(3, count * 30 / maxDistribution)}px"></i><small>${index + 1}</small></span>`).join("")}</div></section>`;
+  const leaderboard = DAILY_GAMES.leaderboards[DAILY_GAMES.selectedLeaderboard] || [];
+  const leaderboardPanel = `<section class="daily-leaderboard" aria-labelledby="daily-leaderboard-title"><header><div><span class="scout-kicker">TU LIGA</span><h3 id="daily-leaderboard-title">Puntos de crack</h3></div><div class="daily-leaderboard-tabs" role="group" aria-label="Periodo de clasificación"><button class="${DAILY_GAMES.selectedLeaderboard === "daily" ? "is-active" : ""}" type="button" onclick="setDailyLeaderboard('daily')" aria-pressed="${DAILY_GAMES.selectedLeaderboard === "daily"}">Hoy</button><button class="${DAILY_GAMES.selectedLeaderboard === "weekly" ? "is-active" : ""}" type="button" onclick="setDailyLeaderboard('weekly')" aria-pressed="${DAILY_GAMES.selectedLeaderboard === "weekly"}">Esta semana</button></div></header>${leaderboard.length ? `<ol>${leaderboard.map((entry) => `<li><b>${entry.position}.</b><span>${esc(entry.display_name)}${entry.user_id === AUTH.session?.user?.id ? " (tú)" : ""}</span><strong>${Number(entry.points) || 0} pts</strong></li>`).join("")}</ol>` : `<p class="daily-player-empty">Aún no hay puntos de crack en esta liga.</p>`}<small>Solo cuentan los puzzles del día; jugar en el archivo no suma XP.</small></section>`;
   let play = "";
   if (DAILY_GAMES.loading && !DAILY_GAMES.loaded) {
     play = `<div class="daily-game-empty" role="status">Cargando el puzzle seguro del servidor…</div>`;
-  } else if (DAILY_GAMES.error) {
+  } else if (DAILY_GAMES.error && !DAILY_GAMES.offline) {
     play = `<div class="daily-game-empty daily-game-error" role="alert">${esc(DAILY_GAMES.error)} <button class="btn ghost" type="button" onclick="loadDailyGameHub(true)">Reintentar</button></div>`;
   } else if (!item) {
     play = `<div class="daily-game-empty"><span class="daily-game-status">PUZZLE NO PUBLICADO</span><h3>${info.title}</h3><p>No hay un puzzle verificado para esta fecha. No inventamos datos: vuelve cuando el catálogo de fútbol esté preparado.</p></div>`;
@@ -2135,12 +2261,17 @@ function dailyGamePanel() {
   } else {
     const guesses = detail.guesses || [];
     const rows = guesses.map((guess) =>
-      `<article class="daily-player-guess"><b>${esc(guess.name)}</b><div>${(guess.comparisons || []).map((comparison) => `<span class="daily-comparison is-${esc(comparison.color)}" aria-label="${esc(comparison.label)}: ${esc(comparison.color)}">${esc(comparison.label)}${comparison.direction === "up" ? " ↑" : comparison.direction === "down" ? " ↓" : ""}</span>`).join("")}</div></article>`
+      `<article class="daily-player-guess"><b>${esc(guess.name)}</b><div>${(guess.comparisons || []).map((comparison) => `<span class="daily-comparison is-${esc(comparison.color)}" aria-label="${esc(comparison.label)}: ${esc(comparison.value)}, ${esc(comparison.color)}">${esc(comparison.label)}: ${esc(comparison.value)} ${comparison.color === "green" ? "✓" : comparison.color === "yellow" ? "≈" : "×"}${comparison.direction === "up" ? " ↑" : comparison.direction === "down" ? " ↓" : ""}</span>`).join("")}</div></article>`
     ).join("");
     play = `<section class="daily-game-play"><header><span class="daily-game-status">${progress.solved ? detail.outcome === "won" ? "ACERTADO" : "PARTIDA FINALIZADA" : "EN JUEGO"}</span><h3>¿Quién es el jugador?</h3><p>${Number(progress.attempts_count) || 0}/8 intentos · Club, país, posición, edad, dorsal y altura.</p></header>${rows || `<p class="daily-player-empty">Las pistas aparecerán después de tu primer intento.</p>`}${progress.solved ? `<p class="daily-game-result" aria-live="polite">${detail.outcome === "won" ? `¡Era ${esc(detail.answer?.name || "el jugador")}!` : `El jugador era ${esc(detail.answer?.name || "la respuesta correcta")}.`}</p>` : `<form class="daily-answer-form daily-grid-answer-form" onsubmit="submitDailyGameGuess(event)"><label for="daily-game-answer">Tu respuesta</label><input id="daily-game-answer" maxlength="100" autocomplete="off" placeholder="Nombre del futbolista" required ${DAILY_GAMES.busy ? "disabled" : ""}><button class="btn" type="submit" ${DAILY_GAMES.busy ? "disabled" : ""}>${DAILY_GAMES.busy ? "Comprobando…" : "Probar jugador"}</button></form>`}</section>`;
   }
   const isToday = DAILY_GAMES.date === madridDate();
-  return `<section class="daily-games-hub" aria-labelledby="daily-games-title"><header class="daily-games-heading"><div><span class="scout-kicker">PLENO · JUEGOS ORIGINALES</span><h2 id="daily-games-title">Juegos diarios</h2><p>Un puzzle nuevo cada día. La racha sigue el calendario de Madrid.</p></div>${dateInput}</header><div class="daily-game-cards">${gameCards}</div>${play}<footer class="daily-games-footer"><span id="daily-countdown" data-date="${esc(DAILY_GAMES.date)}">${isToday ? "Nuevo puzzle a las 00:00 · Europe/Madrid" : "Archivo · jugar una fecha anterior no cambia la racha de hoy"}</span><div><button class="btn ghost" type="button" onclick="reportDailyGameError()" ${!item ? "disabled" : ""}>Reportar error</button>${progress.solved ? `<button class="btn ghost" type="button" onclick="dailyGameShare('${selected}')">Compartir resultado</button>` : ""}</div></footer></section>`;
+  const notices = [
+    DAILY_GAMES.offline ? DAILY_GAMES.error : "",
+    DAILY_GAMES.cacheWarning,
+    DAILY_GAMES.actionError
+  ].filter(Boolean).map((notice) => `<p class="daily-inline-notice" role="status">${esc(notice)}</p>`).join("");
+  return `<section class="daily-games-hub ${DAILY_GAMES.offline ? "is-offline" : ""}" aria-labelledby="daily-games-title"><header class="daily-games-heading"><div><span class="scout-kicker">PLENO · JUEGOS ORIGINALES</span><h2 id="daily-games-title">Juegos diarios</h2><p>Un puzzle nuevo cada día. La racha sigue el calendario de Madrid.</p></div>${dateInput}</header><div class="daily-game-cards">${gameCards}</div>${notices}${play}${statsPanel}${leaderboardPanel}<footer class="daily-games-footer"><span id="daily-countdown" data-date="${esc(DAILY_GAMES.date)}">${isToday ? "Nuevo puzzle a las 00:00 · Europe/Madrid" : "Archivo · jugar una fecha anterior no cambia la racha de hoy"}</span><div><button class="btn ghost" type="button" onclick="reportDailyGameError()" ${!item || DAILY_GAMES.offline ? "disabled" : ""}>Reportar error</button>${progress.solved ? `<button class="btn ghost" type="button" onclick="dailyGameShare('${selected}')">Compartir resultado</button>` : ""}</div></footer></section>`;
 }
 function tJuego() {
   return `${dailyGamePanel()}<details class="legacy-minigames"><summary>Retos de LaLiga: Fichaje, Ruleta y Minuto de Oro</summary>${legacyMinigames()}</details>`;
@@ -2298,7 +2429,7 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
   ${AUTH.mode === "login" ? `<div class="auth-divider"><span>O CONTINÚA CON</span></div><label class="auth-consent"><input id="oauth-terms" type="checkbox" required><span>Acepto los <a href="/terminos" target="_blank" rel="noopener">Términos de Uso</a> y la <a href="/privacidad" target="_blank" rel="noopener">Política de Privacidad</a>.</span></label><button class="btn ghost auth-submit google-submit" onclick="signInGoogle()" ${AUTH.busy || AUTH.googleBusy || !AUTH.client ? "disabled" : ""}><svg class="google-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 13.04a6.6 6.6 0 0 1-.34-2.04c0-.71.12-1.39.33-2.04V6.12H2.18a11 11 0 0 0 0 9.76l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.38 14.97 0 12 0 7.42 0 3.46 2.6 1.22 6.4l3.67 2.85C5.77 6.74 8.63 5.38 12 5.38z"/></svg>${AUTH.googleBusy ? "Abriendo Google…" : "Continuar con Google"}</button>` : ""}
   ${AUTH.mode === "login" || AUTH.mode === "signup" ? `<p class="auth-switch">${AUTH.mode === "signup" ? "¿Ya tienes cuenta?" : "¿Aún no tienes cuenta?"} <button class="auth-link" onclick="setAuthMode('${AUTH.mode === "signup" ? "login" : "signup"}')">${AUTH.mode === "signup" ? "Inicia sesión" : "Regístrate"}</button></p>` : ""}
   <p class="auth-privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.7 2.9 8.1 7 10 4.1-1.9 7-5.3 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>Tu cuenta mantiene tus ligas y pronósticos sincronizados.</p>
-  <nav class="legal-links" aria-label="Información legal"><a href="/privacidad">Privacidad</a><a href="/aviso-legal">Aviso legal</a><a href="/cookies">Cookies</a><a href="/terminos">Términos</a></nav>
+  <nav class="legal-links" aria-label="Información legal"><a href="/privacidad">Privacidad</a><a href="/aviso-legal">Aviso legal</a><a href="/cookies">Cookies</a><a href="/terminos">Términos</a><a href="/creditos">Créditos</a></nav>
   </section></div>`;
 const leagueGate = () => `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><span class="sp"></span><div class="top-actions">${infoButton()}<button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div></div><main class="league-gate">
 <section class="hero" aria-labelledby="league-gate-title"><span class="league-gate-kicker">PLENO <i></i> LA PORRA DE LALIGA</span><h1 id="league-gate-title">Acierta el marcador.<br>Gana a tus amigos.</h1><p>Pronostica antes del pitido y suma puntos con cada partido.</p></section>
@@ -2949,10 +3080,16 @@ const LEGAL_PAGES = {
   "/privacidad": {
     title: "Política de Privacidad",
     body: `<p><strong>Responsable del tratamiento:</strong> [COMPLETAR: nombre o razón social, NIF, domicilio y correo de contacto]. Esta ficha debe completarse antes de publicar PLENO; no se deben inventar datos del responsable.</p>
-      <h2>Datos tratados y finalidad</h2><p>PLENO trata el correo y el identificador de cuenta para autenticación; el nombre elegido, pertenencia a ligas, pronósticos, resultados y mensajes para prestar las funciones sociales y de juego recreativo; y la ruta de la foto opcional si la subes. Supabase aloja autenticación y datos; Render aloja la aplicación. La API de football-data.org proporciona datos deportivos.</p>
+      <h2>Datos tratados y finalidad</h2><p>PLENO trata el correo y el identificador de cuenta para autenticación; el nombre elegido, pertenencia a ligas, pronósticos, resultados y mensajes para prestar las funciones sociales y de juego recreativo; y la ruta de la foto opcional si la subes. Si participas en Juegos diarios, Supabase guarda tus intentos, puntuaciones, rachas e informes de errores asociados a tu cuenta y liga. El navegador puede guardar una copia del puzzle público para mostrarlo sin conexión; no contiene respuestas secretas. Supabase aloja autenticación y datos; Render aloja la aplicación. La API de football-data.org proporciona datos deportivos.</p>
       <h2>Base jurídica, conservación y destinatarios</h2><p>La ejecución del servicio solicitado y, cuando corresponda, el consentimiento son las bases aplicables. Los datos se conservan mientras la cuenta esté activa y se suprimen o anonimizan al eliminarla, salvo conservación exigida por ley. No se venden datos. Las transferencias internacionales y garantías de los proveedores deben verificarse en sus contratos y configuración.</p>
       <h2>Derechos y contacto</h2><p>Puedes solicitar acceso, rectificación, supresión, limitación, oposición y portabilidad escribiendo a [COMPLETAR: correo de privacidad]. También puedes reclamar ante la Agencia Española de Protección de Datos. Puedes eliminar tu cuenta desde «Mi perfil».</p>
       <p><strong>Acción necesaria antes de producción:</strong> verificar y completar identidad y contacto del responsable, bases jurídicas, plazos, transferencias, encargados y procedimiento de derechos conforme a la operativa real.</p>`
+  },
+  "/creditos": {
+    title: "Créditos y fuentes",
+    body: `<p>PLENO es una aplicación independiente y no está afiliada a LaLiga ni a los clubes que aparecen en ella. Los nombres, marcas y escudos se utilizan únicamente con fines identificativos, sujetos a los derechos de sus titulares.</p>
+      <h2>Datos de fútbol</h2><p>Los puzzles diarios sólo deben publicarse con hechos revisados y referencias de fuente guardadas junto a cada puzzle. Wikidata publica sus datos estructurados bajo CC0; cada entidad se identifica mediante su QID. Los datos actuales de LaLiga pueden proceder de <a href="https://www.football-data.org/" target="_blank" rel="noopener noreferrer">football-data.org</a>, con la atribución obligatoria «Football data provided by the Football-Data.org API» y conforme al nivel de acceso y <a href="https://www.football-data.org/client/register" target="_blank" rel="noopener noreferrer">condiciones de uso vigentes</a>. Sus términos indican que escudos y fotografías están protegidos por sus titulares y requieren autorización; PLENO debe comprobar derechos antes de mostrar esos recursos. No se utilizan fotografías de jugadores en los puzzles diarios.</p>
+      <h2>Estado de los puzzles</h2><p>La publicación permanece desactivada mientras no haya un catálogo curado y verificable. Cuando haya contenido activo, esta página deberá mostrar las fuentes concretas utilizadas en cada edición y la atribución aplicable.</p>`
   },
   "/aviso-legal": {
     title: "Aviso Legal",
@@ -2969,7 +3106,7 @@ const LEGAL_PAGES = {
   "/terminos": {
     title: "Términos de Uso",
     body: `<p>El uso de PLENO requiere una cuenta y el cumplimiento de estos términos. Mantén segura tu cuenta, usa un nombre apropiado y no publiques contenido ilícito, abusivo o que infrinja derechos de terceros. Está disponible la opción de reportar mensajes y bloquear usuarios.</p>
-      <h2>Servicio recreativo y gratuito</h2><p class="legal-notice"><strong>PLENO es una plataforma 100 % gratuita y recreativa. No se realizan apuestas con dinero real, no se aceptan depósitos ni se pagan premios en dinero. Los puntos, clasificaciones y recompensas virtuales no tienen valor monetario. PLENO no es un operador de juego de azar y, por su funcionamiento descrito, no requiere licencia de juego de la DGOJ.</strong></p>
+      <h2>Servicio recreativo y gratuito</h2><p class="legal-notice"><strong>PLENO es una plataforma 100 % gratuita y recreativa. No se realizan apuestas con dinero real, no se aceptan depósitos ni se pagan premios en dinero. Los puntos, clasificaciones y recompensas virtuales no tienen valor monetario. PLENO no es un operador de juego de azar y, por su funcionamiento descrito, no requiere licencia de juego de la DGOJ. Los juegos diarios están destinados a personas mayores de 14 años.</strong></p>
       <h2>Disponibilidad y cambios</h2><p>El servicio se ofrece tal cual y puede interrumpirse por mantenimiento o incidencias de proveedores. Los datos de partidos dependen de fuentes externas. El titular deberá completar los datos de identificación y contacto en el Aviso Legal, y publicar un correo de soporte: [COMPLETAR].</p>
       <h2>Cuenta y contenidos</h2><p>Puedes solicitar la eliminación de tu cuenta desde el perfil. Podemos retirar contenidos reportados que infrinjan estos términos o la ley. No publiques datos personales de terceros sin autorización.</p>`
   }
@@ -3034,6 +3171,8 @@ function refreshOnChallengeDayChange() {
     DAILY_GAMES.items = {};
     DAILY_GAMES.loaded = false;
     DAILY_GAMES.error = "";
+    DAILY_GAMES.actionError = "";
+    DAILY_GAMES.offline = false;
     DAILY_GAMES.selection = [];
     DAILY_GAMES.selectedCell = null;
     DAILY_GAMES.requestId++;
@@ -3085,7 +3224,7 @@ function render() {
   const topActions = a.querySelector(".top-actions");
   if (topActions) topActions.insertAdjacentHTML("afterbegin", infoButton() + profileButton());
   a.insertAdjacentHTML("beforeend", instructionsModal() + profileModal() + leaguePickerModal());
-  a.insertAdjacentHTML("beforeend", '<footer class="app-legal-footer"><a href="/privacidad">Privacidad</a><a href="/aviso-legal">Aviso legal</a><a href="/cookies">Cookies</a><a href="/terminos">Términos</a></footer>');
+  a.insertAdjacentHTML("beforeend", '<footer class="app-legal-footer"><span>Football data provided by the Football-Data.org API</span><a href="/privacidad">Privacidad</a><a href="/aviso-legal">Aviso legal</a><a href="/cookies">Cookies</a><a href="/terminos">Términos</a><a href="/creditos">Créditos</a></footer>');
   syncInstructionsModal();
   const syncStatus = a.querySelector(".data-sync");
   if (syncStatus) {

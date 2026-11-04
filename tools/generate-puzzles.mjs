@@ -1,4 +1,4 @@
-import { buildSchedule, madridDate } from "./puzzle-pipeline.mjs";
+import { buildSchedule, madridDate, validateCatalog } from "./puzzle-pipeline.mjs";
 
 const DAYS = 60;
 
@@ -11,29 +11,14 @@ async function main() {
   }
 
   const catalogResponse = await fetch(`${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/puzzle-catalog/catalog.json`, {
-    headers: { apikey: serviceKey, authorization: `****** },
+    headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` },
     signal: AbortSignal.timeout(20000)
   });
   if (!catalogResponse.ok) {
     throw new Error(`No se pudo cargar el catálogo privado de Supabase: ${catalogResponse.status} ${(await catalogResponse.text()).slice(0, 300)}`);
   }
   const catalog = await catalogResponse.json();
-  if (!Array.isArray(catalog.entities) || catalog.entities.length === 0) {
-    throw new Error("El catálogo privado no contiene entidades verificadas para mostrar y validar respuestas.");
-  }
-  const entityResponse = await fetch(`${supabaseUrl.replace(/\/+$/, "")}/rest/v1/rpc/publish_daily_game_entities`, {
-    method: "POST",
-    headers: {
-      apikey: serviceKey,
-      authorization: `******,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ p_entities: catalog.entities }),
-    signal: AbortSignal.timeout(20000)
-  });
-  if (!entityResponse.ok) {
-    throw new Error(`No se pudieron sincronizar las entidades verificadas: ${entityResponse.status} ${(await entityResponse.text()).slice(0, 300)}`);
-  }
+  validateCatalog(catalog);
   const start = madridDate();
   const endDate = new Date(`${start}T12:00:00Z`);
   endDate.setUTCDate(endDate.getUTCDate() + DAYS - 1);
@@ -41,7 +26,7 @@ async function main() {
     method: "POST",
     headers: {
       apikey: serviceKey,
-      authorization: `******,
+      authorization: `Bearer ${serviceKey}`,
       "content-type": "application/json"
     },
     body: JSON.stringify({ p_start_date: start, p_end_date: endDate.toISOString().slice(0, 10) }),
@@ -53,6 +38,19 @@ async function main() {
   }
   const history = JSON.parse(historyText);
   const schedule = buildSchedule(catalog, start, DAYS, secret, history);
+  const entityResponse = await fetch(`${supabaseUrl.replace(/\/+$/, "")}/rest/v1/rpc/publish_daily_game_entities`, {
+    method: "POST",
+    headers: {
+      apikey: serviceKey,
+      authorization: `Bearer ${serviceKey}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ p_entities: catalog.entities }),
+    signal: AbortSignal.timeout(20000)
+  });
+  if (!entityResponse.ok) {
+    throw new Error(`No se pudieron sincronizar las entidades verificadas: ${entityResponse.status} ${(await entityResponse.text()).slice(0, 300)}`);
+  }
   let published = 0;
   for (const puzzle of schedule) {
     if (puzzle.existing) continue;
@@ -60,7 +58,7 @@ async function main() {
       method: "POST",
       headers: {
         apikey: serviceKey,
-        authorization: `******,
+        authorization: `Bearer ${serviceKey}`,
         "content-type": "application/json"
       },
       body: JSON.stringify({

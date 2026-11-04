@@ -10,6 +10,10 @@ Use Wikidata entity IDs (`Q...`) as answer identities and source references.
 Wikidata data is CC0. Keep source IDs for every fact used to author a puzzle.
 Use football-data.org only for current LaLiga squad data and follow its current
 attribution and API terms. Do not add copied biographies, photos, or scraped data.
+Catalog names must be unique (case-insensitive), every answer entity must exist
+in the entity list, and a person must review puzzle wording and source facts
+before upload. Automated checks cannot determine whether a football claim is
+factually correct or whether wording is offensive.
 The top-level `entities` array contains `{id, name, attributes}` records used
 to display answer choices and compare verified player attributes. Names and
 attributes are stored privately; clients receive display names only, while a
@@ -47,6 +51,16 @@ to the Supabase project and a curated catalog uploaded to that bucket. Create
 the private bucket by running the migration, then upload the reviewed JSON as
 `catalog.json` in Supabase Storage. The HMAC seed is never committed or sent to
 clients.
+
+The migration also provides a service-role-only emergency replacement RPC,
+`publish_daily_game_replacement`. It replaces only an already-published date,
+keeps the original puzzle and repetition ledger for audit, and changes both the
+public clues and private validation answer atomically. Record the correction
+reason; do not put solutions or service credentials in the public repository.
+Guess validation is limited to 20 requests per player and game per minute.
+
+Daily and weekly league XP is written only for the current Madrid date.
+Archived games remain playable but do not change streaks or league XP.
 
 Run the synthetic-only pipeline tests with:
 
