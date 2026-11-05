@@ -223,6 +223,10 @@ export function buildSchedule(catalog, startDate, days, secret, existing = {}) {
   });
   const recentKeys = new Map(GAMES.map((game) => [game, new Map()]));
   const contentHashes = new Map(GAMES.map((game) => [game, new Set(existing.content_hashes?.[game] || [])]));
+  const playerUsedKeys = new Set(existing.player_used_key_hashes || []);
+  const playerPoolKeys = new Set(catalog.player.map((candidate) =>
+    createHmac("sha256", secret).update(`player:${candidate.solution.player}`).digest("hex")
+  ));
   const persisted = new Map();
   const startBoundary = startDate;
   for (const puzzle of existing.puzzles || []) {
@@ -246,6 +250,9 @@ export function buildSchedule(catalog, startDate, days, secret, existing = {}) {
       if (alreadyPublished) {
         schedule.push({ ...alreadyPublished, existing: true });
         for (const key of alreadyPublished.repeat_key_hashes) recentKeys.get(game).set(key, date);
+        if (game === "player") {
+          for (const key of alreadyPublished.repeat_key_hashes) playerUsedKeys.add(key);
+        }
         continue;
       }
       const candidates = catalog[game];
@@ -257,6 +264,12 @@ export function buildSchedule(catalog, startDate, days, secret, existing = {}) {
         validateCandidate(game, candidate);
         if (candidate.difficulty !== difficulty) continue;
         const puzzle = preparePuzzle(game, candidate, date, secret);
+        const playerKey = game === "player"
+          ? createHmac("sha256", secret).update(`player:${candidate.solution.player}`).digest("hex")
+          : null;
+        const playerPoolExhausted = game === "player" &&
+          [...playerPoolKeys].every((key) => playerUsedKeys.has(key));
+        if (game === "player" && !playerPoolExhausted && playerUsedKeys.has(playerKey)) continue;
         if (contentHashes.get(game).has(puzzle.content_hash)) continue;
         const previousDates = puzzle.repeat_key_hashes
           .map((key) => recentKeys.get(game).get(key))
@@ -281,6 +294,14 @@ export function buildSchedule(catalog, startDate, days, secret, existing = {}) {
         }
       }
       assert(selected, `No hay candidato único y sin repetición para ${game} el ${date} (dificultad ${difficulty}).`);
+      if (game === "player") {
+        const selectedPlayerKey = createHmac("sha256", secret)
+          .update(`player:${selected.solution.player}`).digest("hex");
+        if (playerUsedKeys.has(selectedPlayerKey)) {
+          console.warn(`Ciclo de jugadores agotado: se reutiliza el pool completo en ${date}.`);
+        }
+        playerUsedKeys.add(selectedPlayerKey);
+      }
       if (selected.repeat_window_days < REPEAT_DAYS[game]) {
         console.warn(`Repetición controlada: ${game} ${date}; ventana ${selected.repeat_window_days} días; última coincidencia ${selected.repeated_from}.`);
       }

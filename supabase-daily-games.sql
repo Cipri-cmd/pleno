@@ -798,6 +798,7 @@ as $$
 declare
   schedule_rows jsonb;
   history_hashes jsonb;
+  player_key_hashes jsonb;
 begin
   if auth.role() is distinct from 'service_role' then
     raise exception 'Service role required';
@@ -831,7 +832,16 @@ begin
     group by puzzle.game
   ) all_hashes;
 
-  return jsonb_build_object('puzzles', schedule_rows, 'content_hashes', history_hashes);
+  select coalesce(jsonb_agg(ledger.repeat_key_hash), '[]'::jsonb)
+  into player_key_hashes
+  from private.daily_game_repetition_ledger ledger
+  where ledger.game = 'player';
+
+  return jsonb_build_object(
+    'puzzles', schedule_rows,
+    'content_hashes', history_hashes,
+    'player_used_key_hashes', player_key_hashes
+  );
 end;
 $$;
 revoke all on function public.get_daily_game_schedule(date, date) from public, anon, authenticated;

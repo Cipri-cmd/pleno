@@ -205,7 +205,8 @@ http.createServer(async (req, res) => {
     return sendFootballData(res, await request);
   }
   const legalRoutes = new Set(["/privacidad", "/aviso-legal", "/cookies", "/terminos"]);
-  const f = normalize(join(root, u.pathname === "/" || legalRoutes.has(u.pathname) ? "index.html" : u.pathname));
+  const isLeagueInviteRoute = /^\/unirse\/[a-z0-9_-]{1,10}\/?$/i.test(u.pathname);
+  const f = normalize(join(root, u.pathname === "/" || legalRoutes.has(u.pathname) || isLeagueInviteRoute ? "index.html" : u.pathname));
   if (!f.startsWith(root) || /server\.mjs|\.env/.test(f)) { res.writeHead(403); return res.end(); }
   try { const data = await readFile(f); res.writeHead(200, { "content-type": types[extname(f)] || "application/octet-stream" }); res.end(data); }
   catch { res.writeHead(404); res.end("No encontrado"); }

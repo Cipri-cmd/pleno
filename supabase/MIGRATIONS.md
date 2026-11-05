@@ -13,6 +13,21 @@ authenticated user to manage their own consent record. The existing
 `supabase-privacy-moderation.sql` also contains the same schema change for
 future setups.
 
+For league display-name changes, run `supabase-rename-league-display-name.sql`
+in the Supabase SQL Editor. The RPC only lets an authenticated user update
+their own membership name and validates the normalized name length.
+
+For league owners to rename their leagues, run `supabase-rename-league.sql`.
+First apply `supabase-delete-league.sql`, which adds the `owner_id` column this
+RPC uses to verify ownership. The rename RPC accepts names from 1 to 50
+characters after trimming repeated whitespace.
+
+For league owners to remove a member, run `supabase-remove-league-member.sql`
+after `supabase-delete-league.sql`. Only the creator can remove another member;
+the creator cannot remove themself through this RPC. A removed member's
+predictions are retained, matching the existing leave-league behavior, and
+become available again if they rejoin.
+
 The repository does not yet have a verified migration baseline for the
 existing Supabase project. Before converting the remaining feature scripts to
 versioned migrations or assembling a one-shot bundle, compare them with the

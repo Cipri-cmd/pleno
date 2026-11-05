@@ -43,14 +43,21 @@ by reducing that window, the generator reduces it in 15-day steps (never below
 and emits a warning in the GitHub Actions log. If no eligible candidate remains,
 generation fails visibly; it never repeats silently.
 
+Player QIDs are also tracked across the full published history, independently
+of the 90-day repetition window. The generator chooses an unused player whenever
+the catalog still has one; it warns when the complete player pool has been used
+and a player must be reused. GitHub Actions refreshes the 60-day reserve every
+six hours so transient scheduled-run failures can be retried automatically.
+
 The generator keeps answers in the private Supabase schema and reads the
 catalog from the non-public Storage bucket. The scheduled workflow requires
 repository secrets `PUZZLE_SEED_SECRET`, `SUPABASE_URL`, and
 `SUPABASE_SECRET_KEY`, plus the SQL migration `supabase-daily-games.sql` applied
-to the Supabase project and a curated catalog uploaded to that bucket. Create
-the private bucket by running the migration, then upload the reviewed JSON as
-`catalog.json` in Supabase Storage. The HMAC seed is never committed or sent to
-clients.
+to the Supabase project and a curated catalog uploaded to that bucket. Reapply
+the migration after updating it so the schedule RPC returns the all-time player
+ledger. Create the private bucket by running the migration, then upload the
+reviewed JSON as `catalog.json` in Supabase Storage. The HMAC seed is never
+committed or sent to clients.
 
 The migration also provides a service-role-only emergency replacement RPC,
 `publish_daily_game_replacement`. It replaces only an already-published date,

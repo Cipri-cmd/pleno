@@ -495,6 +495,29 @@ main.tab-content{width:min(100%,1480px);padding:clamp(16px,2.4vw,36px) clamp(12p
 .league-leave-button:hover:not(:disabled){border-color:color-mix(in srgb,var(--bad) 48%,var(--ln));background:color-mix(in srgb,var(--bad) 8%,var(--s2));color:var(--bad)}
 .league-leave-button:disabled{opacity:.55}
 .league-leave-button svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.league-share-button{display:grid;width:40px;height:40px;flex:none;place-items:center;border:1px solid color-mix(in srgb,var(--ac2) 28%,var(--ln));border-radius:11px;background:color-mix(in srgb,var(--ac2) 6%,var(--s2));color:var(--ac2);transition:color .16s,border-color .16s,background .16s,transform .16s}
+.league-share-button:hover:not(:disabled){border-color:var(--ac2);background:color-mix(in srgb,var(--ac2) 14%,var(--s2));transform:translateY(-1px)}
+.league-share-button:disabled{opacity:.55}
+.league-share-button svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.league-share-button:focus-visible,.league-leave-button:focus-visible,.league-delete-button:focus-visible,.league-rename-button:focus-visible{outline:2px solid var(--ac2);outline-offset:2px}
+.league-rename-button{padding:0;border:0;background:transparent;color:var(--ac2);font:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.league-rename-button:hover{color:var(--tx)}
+.league-owner-actions{display:grid;gap:8px;margin-top:12px;padding:12px;border:1px solid var(--ln);border-radius:12px;background:var(--s1)}
+.league-owner-actions>h3{margin:0;color:var(--mu);font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase}
+.league-owner-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+.league-owner-row>span{display:grid;gap:3px;min-width:0}
+.league-owner-row>span>b{overflow:hidden;color:var(--tx);font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.league-owner-row>span>small{color:var(--mu);font-size:9px}
+.league-rename-league-button{flex:none;padding:7px 9px;border:1px solid var(--ln);border-radius:8px;background:var(--s2);color:var(--ac2);font-size:10px;font-weight:750}
+.league-rename-league-button:hover:not(:disabled){border-color:var(--ac2);background:color-mix(in srgb,var(--ac2) 8%,var(--s2))}
+.league-rename-league-button:disabled{opacity:.55}
+.league-rename-league-button:focus-visible{outline:2px solid var(--ac2);outline-offset:2px}
+.league-remove-member-button{flex:none;padding:7px 9px;border:1px solid color-mix(in srgb,var(--bad) 32%,var(--ln));border-radius:8px;background:color-mix(in srgb,var(--bad) 6%,var(--s2));color:var(--bad);font-size:10px;font-weight:750}
+.league-remove-member-button:hover:not(:disabled){border-color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,var(--s2))}
+.league-remove-member-button:disabled{opacity:.55}
+.league-remove-member-button:focus-visible{outline:2px solid var(--bad);outline-offset:2px}
+.league-owner-empty{margin:0;color:var(--mu);font-size:10px}
+@media(max-width:390px){.league-share-button,.league-leave-button,.league-delete-button{width:34px;height:34px}.league-picker-row{gap:4px}}
 @media(max-width:640px){
   .top .bar .league-switcher{max-width:34vw;min-height:38px;padding:4px 6px}
   .top .bar .league-switcher-label{font-size:6px}

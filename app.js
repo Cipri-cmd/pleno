@@ -19,6 +19,8 @@ const save = () => { try { localStorage.setItem("pleno", JSON.stringify(S)); } c
 const V = { tab: "i", team: null, sub: "res", md: null, challengeMd: null, leagueSection: "ranking", instructionsOpen: false, instructionsNeedsFocus: false, profileOpen: false, profileNeedsFocus: false, leaguePickerOpen: false, leaguePickerNeedsFocus: false, mobileMoreOpen: false, tbl: "all", q: "", tabDirection: 1 };
 const D = { ready: false, err: null, matches: [], table: [], tH: [], tA: [], teams: [], by: {}, scorers: [], cur: 1, seasonStartYear: 0, tc: {}, polling: false, lastMatchesUpdate: 0, lastStandingsUpdate: 0, lastTeamsUpdate: 0, lastScorersUpdate: 0, lastStandingsPoll: 0, lastTeamsPoll: 0, lastScorersPoll: 0, matchesTimestampEstimated: false, standingsTimestampEstimated: false, teamsTimestampEstimated: false, scorersTimestampEstimated: false, matchesStale: false, standingsStale: false, teamsStale: false, scorersStale: false, matchesError: "", standingsError: "", teamsError: "", scorersError: "", minigames: { round_bonuses: [], minute_bonuses: [], red_cards: [] } };
 const AUTH = { client: null, session: null, ready: false, busy: false, googleBusy: false, syncing: false, minigameSyncing: false, mode: "login", email: "", password: "", error: "" };
+const NOTIFY = { enabled: false, permission: "default", busy: false };
+const INSTALL = { available: false, prompt: null };
 const LEAGUE_SCORES = { leagueId: null, seasonStartYear: null, season: [], rounds: {}, loading: false, error: "" };
 const ROOM = { loading: false, loaded: false, busy: false, archiving: false, error: "", archiveError: "", isAdmin: false, debts: [], chronicles: [], hallSeasons: [], dinnerLeaders: [], channel: null, leagueId: null, updatedAt: 0 };
 const CHAT = { loading: false, sending: false, uploadingAvatar: false, error: "", messages: [], avatars: {}, avatarPaths: {}, blockedUserIds: new Set(), channel: null, channelLeagueId: null, loadedLeagueId: null, subscribed: false, input: "" };
@@ -28,6 +30,7 @@ const LEAGUES = {
   items: [], loading: false, busy: false, error: "", warning: "",
   createName: "", leagueName: "", joinName: "", inviteCode: ""
 };
+const INVITE = { code: "" };
 const GAME = { loading: false, busy: false, spinning: false, spinStage: "", wheelRotation: 0, wheelResult: null, data: null, error: "", date: "", publicationRequestedDate: "", publicationTimer: null };
 const DAILY_GAMES = {
   date: "",
@@ -396,12 +399,16 @@ function roundBoard(md) {
   }));
   return { matches, finished, rows };
 }
-async function copyLeagueCode() {
+function normalizeLeagueDisplayName(value) {
+  const name = String(value ?? "").trim().replace(/\s+/g, " ").slice(0, 30);
+  return name;
+}
+async function copyTextToClipboard(value, successMessage = "Código copiado") {
   try {
-    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(S.league.code);
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
     else {
       const field = document.createElement("textarea");
-      field.value = S.league.code;
+      field.value = value;
       field.style.position = "fixed";
       field.style.opacity = "0";
       document.body.append(field);
@@ -410,14 +417,133 @@ async function copyLeagueCode() {
       field.remove();
       if (!copied) throw new Error("El navegador no permitió copiar");
     }
-    toast("Código de liga copiado");
+    toast(successMessage);
   } catch (e) { toast(`No se pudo copiar: ${e.message}`); }
+}
+async function copyLeagueCode() {
+  return copyTextToClipboard(S.league.code, "Código de liga copiado");
 }
 async function shareLeague() {
   const text = `Únete a mi liga de PLENO con el código ${S.league.code}`;
-  if (!navigator.share) return copyLeagueCode();
-  try { await navigator.share({ title: "Mi liga PLENO", text }); }
+  const url = new URL(`/unirse/${encodeURIComponent(S.league.code)}`, location.origin).toString();
+  if (!navigator.share) return copyTextToClipboard(`${text}\n${url}`, "Invitación copiada para compartir");
+  try { await navigator.share({ title: "Mi liga PLENO", text, url }); }
   catch (e) { if (e.name !== "AbortError") toast(`No se pudo compartir: ${e.message}`); }
+}
+async function shareLeagueInvite(leagueId) {
+  const league = LEAGUES.items.find((item) => item.id === leagueId);
+  if (!league) return;
+  const text = `Únete a mi liga de PLENO "${league.name}" con el código ${league.code}`;
+  const url = new URL(`/unirse/${encodeURIComponent(league.code)}`, location.origin).toString();
+  if (!navigator.share) return copyTextToClipboard(`${text}\n${url}`, `Invitación a ${league.name} copiada`);
+  try {
+    await navigator.share({ title: `Invitación a ${league.name}`, text, url });
+  } catch (e) {
+    if (e.name !== "AbortError") {
+      toast(`No se pudo compartir: ${e.message}`, "error");
+    }
+  }
+}
+async function renameLeagueDisplayName() {
+  if (!AUTH.client || !AUTH.session || !S.league?.id) return;
+  const current = S.me || AUTH.session.user.email || "Jugador";
+  const next = window.prompt("Cambia tu nombre en esta liga", current);
+  if (next === null) return;
+  const cleaned = normalizeLeagueDisplayName(next);
+  if (!cleaned) {
+    toast("Escribe un nombre válido para la liga.", "error");
+    return;
+  }
+  try {
+    const { error } = await AUTH.client.rpc("update_league_display_name", {
+      p_league_id: S.league.id,
+      p_display_name: cleaned
+    });
+    if (error) throw error;
+    S.me = cleaned;
+    const leagueIndex = LEAGUES.items.findIndex((item) => item.id === S.league.id);
+    if (leagueIndex >= 0) LEAGUES.items[leagueIndex].displayName = cleaned;
+    for (const row of LEAGUE_SCORES.season) {
+      if (row.user_id === AUTH.session.user.id) row.display_name = cleaned;
+    }
+    for (const rows of Object.values(LEAGUE_SCORES.rounds)) {
+      for (const row of rows) {
+        if (row.user_id === AUTH.session.user.id) row.display_name = cleaned;
+      }
+    }
+    for (const entries of Object.values(DAILY_GAMES.leaderboards)) {
+      for (const entry of entries) {
+        if (entry.user_id === AUTH.session.user.id) entry.display_name = cleaned;
+      }
+    }
+    toast("Tu nombre en la liga ha cambiado.");
+    render();
+  } catch (error) {
+    toast(`No se pudo actualizar tu nombre: ${errorText(error)}`, "error");
+  }
+}
+async function renameLeague(leagueId) {
+  const league = LEAGUES.items.find((item) => item.id === leagueId);
+  if (!league || league.ownerId !== AUTH.session?.user?.id || LEAGUES.busy) return;
+  const enteredName = window.prompt("Nuevo nombre para la liga (máximo 50 caracteres)", league.name);
+  if (enteredName === null) return;
+  const name = enteredName.trim().replace(/\s+/g, " ");
+  if (!name || [...name].length > 50) {
+    toast("El nombre debe tener entre 1 y 50 caracteres.", "error");
+    return;
+  }
+  LEAGUES.busy = true;
+  LEAGUES.error = "";
+  render();
+  try {
+    const { error } = await AUTH.client.rpc("rename_league", {
+      p_league_id: leagueId,
+      p_name: name
+    });
+    if (error) throw error;
+    league.name = name;
+    if (S.league?.id === leagueId) S.league.name = name;
+    toast("Nombre de la liga actualizado.");
+  } catch (error) {
+    LEAGUES.error = `No se pudo cambiar el nombre de la liga: ${errorText(error)}`;
+    toast(LEAGUES.error, "error");
+  } finally {
+    LEAGUES.busy = false;
+    render();
+  }
+}
+async function removeLeagueMember(leagueId, memberId) {
+  const league = LEAGUES.items.find((item) => item.id === leagueId);
+  const member = S.friends[memberId];
+  if (!league || league.ownerId !== AUTH.session?.user?.id || !member || LEAGUES.busy) return;
+  const confirmed = window.confirm(
+    `¿Expulsar a «${member.n}» de «${league.name}»?\n\nPerderá acceso a la liga. Sus pronósticos se conservarán y volverán a estar disponibles si se une de nuevo.`
+  );
+  if (!confirmed) return;
+  LEAGUES.busy = true;
+  LEAGUES.error = "";
+  render();
+  try {
+    const { error } = await AUTH.client.rpc("remove_league_member", {
+      p_league_id: leagueId,
+      p_user_id: memberId
+    });
+    if (error) throw error;
+    LEAGUE_SCORES.updatedAt = 0;
+    for (const entries of Object.values(DAILY_GAMES.leaderboards)) {
+      const filtered = entries.filter((entry) => entry.user_id !== memberId);
+      entries.splice(0, entries.length, ...filtered);
+    }
+    await syncLeagueData(leagueId, AUTH.session.user.id);
+    if (V.tab === "l") await loadRoomData(true);
+    toast(`${member.n} ha salido de «${league.name}».`);
+  } catch (error) {
+    LEAGUES.error = `No se pudo expulsar al miembro: ${errorText(error)}`;
+    toast(LEAGUES.error, "error");
+  } finally {
+    LEAGUES.busy = false;
+    render();
+  }
 }
 function stp(id, s, d) {
   const sheet = PREDICTION.matchId === id && document.querySelector(".prediction-sheet");
@@ -650,6 +776,37 @@ async function refreshCloudPredictions() {
   }
   if (JSON.stringify([S.preds, S.joker, S.friends]) !== previous) render();
 }
+async function persistPendingLegalConsent() {
+  if (!AUTH.session || !AUTH.client) return;
+  const consentPairs = [
+    ["pleno:google-terms-consent:v1", "pleno:google-age-consent:v1"],
+    ["pleno:signup-terms-consent:v1", "pleno:signup-age-consent:v1"]
+  ];
+  for (const [termsKey, ageKey] of consentPairs) {
+    const acceptedAt = sessionStorage.getItem(termsKey);
+    const ageConfirmedAt = sessionStorage.getItem(ageKey);
+    if (!acceptedAt || !ageConfirmedAt) continue;
+    const { error } = await AUTH.client.from("user_legal_consents").upsert({
+      user_id: AUTH.session.user.id,
+      terms_version: "1.0",
+      accepted_at: acceptedAt,
+      age_confirmed_at: ageConfirmedAt
+    }, { onConflict: "user_id" });
+    if (error) throw error;
+    sessionStorage.removeItem(termsKey);
+    sessionStorage.removeItem(ageKey);
+  }
+}
+function clearPendingLegalConsentKeys() {
+  const consentPairs = [
+    ["pleno:google-terms-consent:v1", "pleno:google-age-consent:v1"],
+    ["pleno:signup-terms-consent:v1", "pleno:signup-age-consent:v1"]
+  ];
+  for (const [termsKey, ageKey] of consentPairs) {
+    sessionStorage.removeItem(termsKey);
+    sessionStorage.removeItem(ageKey);
+  }
+}
 async function handleAuthSession(session) {
   const userId = session?.user?.id ?? null;
   const previousId = AUTH.userId;
@@ -659,7 +816,7 @@ async function handleAuthSession(session) {
   AUTH.error = "";
   let consentError = "";
   if (session && previousId !== userId) {
-    try { await persistOAuthLegalConsent(); }
+    try { await persistPendingLegalConsent(); }
     catch (error) { consentError = errorText(error); }
   }
   if (previousId !== userId) {
@@ -700,10 +857,15 @@ async function handleAuthSession(session) {
   if (session) {
     try { await loadCloudLeague(); }
     catch (e) { resetLeagueState(); AUTH.error = `No se pudieron cargar tus datos: ${e.message}`; }
-    if (userId && previousId !== userId && !hasSeenOnboarding(userId)) {
+    if (S.league?.id && INVITE.code) {
+      LEAGUES.inviteCode = INVITE.code;
+      V.leaguePickerOpen = true;
+      V.leaguePickerNeedsFocus = true;
+    } else if (userId && previousId !== userId && !hasSeenOnboarding(userId)) {
       V.instructionsOpen = true;
       V.instructionsNeedsFocus = true;
     }
+    setupBrowserNotifications();
   } else {
     V.instructionsOpen = false;
     V.instructionsNeedsFocus = false;
@@ -716,24 +878,143 @@ async function handleAuthSession(session) {
   render();
   if (session && S.league?.id) refreshMinigameScoreData(false);
 }
-async function persistOAuthLegalConsent() {
-  const consentKey = "pleno:google-terms-consent:v1";
-  const ageConsentKey = "pleno:google-age-consent:v1";
-  const acceptedAt = sessionStorage.getItem(consentKey);
-  const ageConfirmedAt = sessionStorage.getItem(ageConsentKey);
-  if (!acceptedAt || !ageConfirmedAt || !AUTH.session || !AUTH.client) return;
-  const { error } = await AUTH.client.from("user_legal_consents").upsert({
-    user_id: AUTH.session.user.id,
-    terms_version: "1.0",
-    accepted_at: acceptedAt,
-    age_confirmed_at: ageConfirmedAt
-  }, { onConflict: "user_id" });
-  if (error) throw error;
-  sessionStorage.removeItem(consentKey);
-  sessionStorage.removeItem(ageConsentKey);
+function notificationPreferenceKey() {
+  return "pleno:notifications:v1";
+}
+function syncNotificationState() {
+  if (!("Notification" in window)) {
+    NOTIFY.enabled = false;
+    NOTIFY.permission = "unsupported";
+    return;
+  }
+  const stored = (() => { try { return JSON.parse(localStorage.getItem(notificationPreferenceKey()) || "false"); } catch { return false; } })();
+  NOTIFY.permission = Notification.permission;
+  NOTIFY.enabled = stored && Notification.permission === "granted";
+}
+async function toggleNotifications(enabled) {
+  if (!("Notification" in window)) {
+    toast("Este navegador no admite notificaciones del sistema.", "error");
+    return;
+  }
+  NOTIFY.busy = true;
+  render();
+  try {
+    if (enabled) {
+      const permission = await Notification.requestPermission();
+      NOTIFY.permission = permission;
+      const allowed = permission === "granted";
+      NOTIFY.enabled = allowed;
+      try { localStorage.setItem(notificationPreferenceKey(), JSON.stringify(allowed)); } catch {}
+      if (allowed) {
+        toast("Notificaciones activadas. Solo avisos útiles y sin spam.");
+        if (navigator.serviceWorker?.ready) {
+          const registration = await navigator.serviceWorker.ready;
+          registration.active?.postMessage({ type: "pleno:notify", title: "PLENO", body: "Tu liga y tu racha te esperan." });
+        }
+      } else {
+        toast("No se activaron las notificaciones del navegador.", "error");
+      }
+    } else {
+      NOTIFY.enabled = false;
+      NOTIFY.permission = Notification.permission;
+      try { localStorage.setItem(notificationPreferenceKey(), "false"); } catch {}
+      toast("Notificaciones desactivadas.");
+    }
+  } finally {
+    NOTIFY.busy = false;
+    render();
+  }
+}
+function notificationLastSentKey() {
+  return "pleno:notifications:last-sent:v1";
+}
+function maybeSendReminderNotification(force = false) {
+  if (!("Notification" in window) || !NOTIFY.enabled || Notification.permission !== "granted") return;
+  const now = Date.now();
+  const lastSent = Number(localStorage.getItem(notificationLastSentKey()) || "0");
+  if (!force && now - lastSent < 12 * 60 * 60 * 1000) return;
+  const title = "PLENO";
+  const body = AUTH.session ? "Tu liga y tu racha te esperan. Revisa partidos y juegos del día." : "Tu porra y tus juegos diarios están listos.";
+  try {
+    new Notification(title, {
+      body,
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+      tag: "pleno-reminder",
+      renotify: true
+    });
+    localStorage.setItem(notificationLastSentKey(), String(now));
+  } catch {
+    // Ignored: browsers may block notification creation in some contexts.
+  }
+}
+function setupBrowserNotifications() {
+  syncNotificationState();
+  if (NOTIFY.enabled) {
+    maybeSendReminderNotification(true);
+  }
+}
+function handleBeforeInstallPrompt(event) {
+  event.preventDefault();
+  if (!INSTALL.prompt) INSTALL.prompt = event;
+  INSTALL.available = true;
+  render();
+}
+function handleInstalledApp() {
+  INSTALL.available = false;
+  INSTALL.prompt = null;
+  render();
+}
+async function installApp() {
+  if (!INSTALL.prompt) {
+    toast("La app ya está instalada o tu navegador no ofrece la instalación aquí.", "error");
+    return;
+  }
+  try {
+    INSTALL.prompt.prompt();
+    const result = await INSTALL.prompt.userChoice;
+    if (result?.outcome === "accepted") {
+      toast("PLENO se instalará como aplicación en tu dispositivo.");
+    } else {
+      toast("Instalación cancelada.");
+    }
+  } catch (error) {
+    toast(`No se pudo instalar la app: ${errorText(error)}`, "error");
+  } finally {
+    INSTALL.available = false;
+    INSTALL.prompt = null;
+    render();
+  }
 }
 function authRedirectUrl() {
-  return new URL("/", window.location.origin).toString();
+  const url = new URL("/", window.location.origin);
+  if (INVITE.code) url.searchParams.set("invite", INVITE.code);
+  return url.toString();
+}
+function initializeLeagueInvite() {
+  const routeMatch = window.location.pathname.match(/^\/unirse\/([a-z0-9_-]{1,10})\/?$/i);
+  const queryCode = new URLSearchParams(window.location.search).get("invite") || "";
+  let code = (routeMatch?.[1] || queryCode).toUpperCase();
+  try {
+    if (code) sessionStorage.setItem("pleno:pending-league-invite:v1", code);
+    else code = sessionStorage.getItem("pleno:pending-league-invite:v1") || "";
+  } catch {}
+  INVITE.code = /^[A-Z0-9_-]{1,10}$/.test(code) ? code : "";
+  LEAGUES.inviteCode = INVITE.code;
+  if (INVITE.code && !routeMatch) {
+    const url = new URL(window.location.href);
+    url.pathname = `/unirse/${encodeURIComponent(INVITE.code)}`;
+    url.searchParams.delete("invite");
+    history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+}
+function clearPendingLeagueInvite() {
+  INVITE.code = "";
+  LEAGUES.inviteCode = "";
+  try { sessionStorage.removeItem("pleno:pending-league-invite:v1"); } catch {}
+  if (/^\/unirse\/[a-z0-9_-]{1,10}\/?$/i.test(window.location.pathname)) {
+    history.replaceState(null, "", "/");
+  }
 }
 function friendlyAuthError(error) {
   const message = errorText(error);
@@ -764,6 +1045,7 @@ async function initializeAuth() {
     });
     const { data, error } = await AUTH.client.auth.getSession();
     if (error) throw error;
+    setupBrowserNotifications();
     await handleAuthSession(data.session);
     if (callbackError) {
       AUTH.error = friendlyAuthError(new Error(callbackError));
@@ -807,6 +1089,12 @@ async function submitAuth() {
   render();
   try {
     const signupConsentAt = new Date().toISOString();
+    if (AUTH.mode === "signup") {
+      try { sessionStorage.setItem("pleno:signup-terms-consent:v1", signupConsentAt); }
+      catch { throw new Error("El navegador no permite guardar la aceptación requerida para el registro con correo."); }
+      try { sessionStorage.setItem("pleno:signup-age-consent:v1", signupConsentAt); }
+      catch { throw new Error("El navegador no permite guardar la confirmación de edad requerida."); }
+    }
     const result = AUTH.mode === "signup"
       ? await AUTH.client.auth.signUp({
         email,
@@ -834,6 +1122,8 @@ async function submitAuth() {
     AUTH.password = "";
     if (result.data.session) await handleAuthSession(result.data.session);
   } catch (e) {
+    try { clearPendingLegalConsentKeys(); }
+    catch (storageError) { console.warn(`No se pudo limpiar la aceptación temporal del registro: ${errorText(storageError)}`); }
     AUTH.busy = false;
     const invalidCredentials = AUTH.mode === "login" &&
       (e?.code === "invalid_credentials" || /invalid login credentials/i.test(errorText(e)));
@@ -862,10 +1152,7 @@ async function signInGoogle() {
     });
     if (error) throw error;
   } catch (error) {
-    try {
-      sessionStorage.removeItem("pleno:google-terms-consent:v1");
-      sessionStorage.removeItem("pleno:google-age-consent:v1");
-    }
+    try { clearPendingLegalConsentKeys(); }
     catch (storageError) { console.warn(`No se pudo limpiar la aceptación temporal de Google: ${errorText(storageError)}`); }
     AUTH.error = `No se pudo iniciar con Google: ${friendlyAuthError(error)}. Comprueba que el proveedor Google esté configurado en Supabase.`;
     render();
@@ -2337,15 +2624,27 @@ function profileModal() {
   const uploadLabel = source ? "Cambiar foto" : "Añadir foto";
   const memberNames = new Map(Object.entries(S.friends).map(([id, member]) => [id, member.n]));
   const blockedUsers = [...CHAT.blockedUserIds].map((id) => `<li><span>${esc(memberNames.get(id) || "Jugador")}</span><button type="button" onclick="unblockChatUser('${esc(id)}')">Desbloquear</button></li>`).join("");
-  return `<div class="instructions-overlay profile-overlay" role="presentation" onclick="if(event.target===this)closeProfile()"><section class="instructions-dialog profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TU CUENTA · PLENO</span><h2 id="profile-title">Mi perfil</h2><p>${esc(S.me || AUTH.session.user.email || "Jugador")}</p></div><button class="instructions-close profile-close" type="button" onclick="closeProfile()" aria-label="Cerrar perfil">×</button></header><div class="profile-photo-stage">${image}</div>${PROFILE.loading ? '<p class="profile-status" role="status">Cargando foto de perfil…</p>' : ""}${PROFILE.error ? `<p class="profile-error" role="alert">No se pudo completar la acción: ${esc(PROFILE.error)}</p>` : ""}<div class="profile-actions"><label class="btn profile-upload ${profileBusy || !S.league?.id ? "is-disabled" : ""}">${CHAT.uploadingAvatar ? "Guardando…" : uploadLabel}<input type="file" accept="image/*" onchange="uploadProfilePhoto(event)" ${profileBusy || !S.league?.id ? "disabled" : ""}></label>${source ? `<button class="btn ghost profile-remove" type="button" onclick="removeProfilePhoto()" ${profileBusy ? "disabled" : ""}>Quitar foto</button>` : ""}</div>${!S.league?.id ? '<p class="profile-hint">Únete a una liga para añadir una foto de perfil.</p>' : ""}<section class="profile-blocked"><h3>Usuarios bloqueados</h3>${blockedUsers ? `<ul>${blockedUsers}</ul>` : '<p>No has bloqueado a nadie.</p>'}</section><button class="btn profile-delete-account" type="button" onclick="deleteMyAccount()" ${PROFILE.deleting ? "disabled" : ""}>${PROFILE.deleting ? "Eliminando cuenta…" : "Eliminar mi cuenta y datos"}</button><p class="profile-hint">La eliminación es irreversible e incluye los datos asociados a tu cuenta.</p></section></div>`;
+  return `<div class="instructions-overlay profile-overlay" role="presentation" onclick="if(event.target===this)closeProfile()"><section class="instructions-dialog profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TU CUENTA · PLENO</span><h2 id="profile-title">Mi perfil</h2><p>${esc(S.me || AUTH.session.user.email || "Jugador")}</p></div><button class="instructions-close profile-close" type="button" onclick="closeProfile()" aria-label="Cerrar perfil">×</button></header><div class="profile-photo-stage">${image}</div>${PROFILE.loading ? '<p class="profile-status" role="status">Cargando foto de perfil…</p>' : ""}${PROFILE.error ? `<p class="profile-error" role="alert">No se pudo completar la acción: ${esc(PROFILE.error)}</p>` : ""}<div class="profile-actions"><label class="btn profile-upload ${profileBusy || !S.league?.id ? "is-disabled" : ""}">${CHAT.uploadingAvatar ? "Guardando…" : uploadLabel}<input type="file" accept="image/*" onchange="uploadProfilePhoto(event)" ${profileBusy || !S.league?.id ? "disabled" : ""}></label>${source ? `<button class="btn ghost profile-remove" type="button" onclick="removeProfilePhoto()" ${profileBusy ? "disabled" : ""}>Quitar foto</button>` : ""}</div>${!S.league?.id ? '<p class="profile-hint">Únete a una liga para añadir una foto de perfil.</p>' : ""}<div class="profile-settings"><label class="profile-toggle"><input type="checkbox" ${NOTIFY.enabled ? "checked" : ""} ${NOTIFY.busy ? "disabled" : ""} onchange="toggleNotifications(this.checked)"><span>Notificaciones del navegador</span></label><p class="profile-hint">Avisos útiles: porras pendientes, resultado de jornada, racha diaria y cambios en la liga. Sin spam y con control de frecuencia.</p></div><section class="profile-blocked"><h3>Usuarios bloqueados</h3>${blockedUsers ? `<ul>${blockedUsers}</ul>` : '<p>No has bloqueado a nadie.</p>'}</section><button class="btn profile-delete-account" type="button" onclick="deleteMyAccount()" ${PROFILE.deleting ? "disabled" : ""}>${PROFILE.deleting ? "Eliminando cuenta…" : "Eliminar mi cuenta y datos"}</button><p class="profile-hint">La eliminación es irreversible e incluye los datos asociados a tu cuenta.</p></section></div>`;
 }
 function leaguePickerModal() {
   if (!V.leaguePickerOpen || !AUTH.session) return "";
   const rows = LEAGUES.items.map((league) => {
     const isOwner = league.ownerId === AUTH.session.user.id;
-    return `<div class="league-picker-row"><button class="league-picker-option ${league.id === S.league?.id ? "is-current" : ""}" type="button" onclick="switchLeague('${esc(league.id)}')" ${LEAGUES.busy ? "disabled" : ""}><span><b>${esc(league.name)}</b><small>${league.id === S.league?.id ? "Liga actual" : `Jugando como ${esc(league.displayName)}`}${isOwner ? " · Creador" : ""}</small></span>${league.id === S.league?.id ? '<strong>ACTIVA</strong>' : '<i aria-hidden="true">→</i>'}</button><button class="league-leave-button" type="button" onclick="leaveLeague('${esc(league.id)}')" aria-label="Salir de la liga ${esc(league.name)}" title="Salir de la liga" ${LEAGUES.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button>${isOwner ? `<button class="league-delete-button" type="button" onclick="deleteLeague('${esc(league.id)}')" aria-label="Borrar liga ${esc(league.name)}" title="Borrar liga" ${LEAGUES.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>` : ""}</div>`;
+    return `<div class="league-picker-row"><button class="league-picker-option ${league.id === S.league?.id ? "is-current" : ""}" type="button" onclick="switchLeague('${esc(league.id)}')" ${LEAGUES.busy ? "disabled" : ""}><span><b>${esc(league.name)}</b><small>${league.id === S.league?.id ? "Liga actual" : `Jugando como ${esc(league.displayName)}`}${isOwner ? " · Creador" : ""}</small></span>${league.id === S.league?.id ? '<strong>ACTIVA</strong>' : '<i aria-hidden="true">→</i>'}</button><button class="league-share-button" type="button" onclick="shareLeagueInvite('${esc(league.id)}')" aria-label="Compartir liga ${esc(league.name)}" title="Compartir invitación" ${LEAGUES.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 8a3 3 0 1 0-2.82-4H13a3 3 0 0 0 0 6h.18A2.99 2.99 0 0 0 16 8ZM8 14a3 3 0 1 0-2.82-4H5a3 3 0 0 0 0 6h.18A2.99 2.99 0 0 0 8 14Zm8 6a3 3 0 1 0-2.82-4H13a3 3 0 0 0 0 6h.18A2.99 2.99 0 0 0 16 20Zm-8-3.5L16 9m0 7L8 10.5"/></svg></button><button class="league-leave-button" type="button" onclick="leaveLeague('${esc(league.id)}')" aria-label="Salir de la liga ${esc(league.name)}" title="Salir de la liga" ${LEAGUES.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button>${isOwner ? `<button class="league-delete-button" type="button" onclick="deleteLeague('${esc(league.id)}')" aria-label="Borrar liga ${esc(league.name)}" title="Borrar liga" ${LEAGUES.busy ? "disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>` : ""}</div>`;
   }).join("");
-  return `<div class="instructions-overlay league-picker-overlay" role="presentation" onclick="if(event.target===this)closeLeaguePicker()"><section class="instructions-dialog league-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="league-picker-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TUS COMPETICIONES</span><h2 id="league-picker-title">Mis ligas</h2><p>Cambia de liga, sal de una o únete a otra con su código.</p></div><button class="instructions-close league-picker-close" type="button" onclick="closeLeaguePicker()" aria-label="Cerrar ligas">×</button></header><div class="league-picker-list">${rows || '<p class="profile-hint">Todavía no perteneces a ninguna liga.</p>'}</div>${LEAGUES.warning ? `<p class="profile-hint" role="status">${esc(LEAGUES.warning)}</p>` : ""}<form class="league-picker-join" onsubmit="event.preventDefault();joinAnotherLeague()"><label for="league-join-code">Unirme a otra liga</label><div><input class="t" id="league-join-code" maxlength="10" autocomplete="off" placeholder="Código de invitación" required ${LEAGUES.busy ? "disabled" : ""}><button class="btn" type="submit" ${LEAGUES.busy ? "disabled" : ""}>${LEAGUES.busy ? "Uniéndote…" : "Unirme"}</button></div></form>${LEAGUES.error ? `<p class="profile-error" role="alert">${esc(LEAGUES.error)}</p>` : ""}</section></div>`;
+  const ownerActions = LEAGUES.items
+    .filter((league) => league.ownerId === AUTH.session.user.id)
+    .map((league) => `<div class="league-owner-row"><span><b>${esc(league.name)}</b><small>Administras esta liga</small></span><button class="league-rename-league-button" type="button" onclick="renameLeague('${esc(league.id)}')" ${LEAGUES.busy ? "disabled" : ""}>Cambiar nombre</button></div>`)
+    .join("");
+  const activeLeagueIsOwned = LEAGUES.items.some((league) =>
+    league.id === S.league?.id && league.ownerId === AUTH.session.user.id
+  );
+  const memberActions = activeLeagueIsOwned
+    ? Object.entries(S.friends).map(([userId, member]) =>
+      `<div class="league-owner-row"><span><b>${esc(member.n)}</b><small>Miembro</small></span><button class="league-remove-member-button" type="button" onclick="removeLeagueMember('${esc(S.league.id)}','${esc(userId)}')" ${LEAGUES.busy ? "disabled" : ""}>Expulsar</button></div>`
+    ).join("") || '<p class="league-owner-empty">No hay otros miembros en esta liga.</p>'
+    : "";
+  return `<div class="instructions-overlay league-picker-overlay" role="presentation" onclick="if(event.target===this)closeLeaguePicker()"><section class="instructions-dialog league-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="league-picker-title" tabindex="-1"><header class="instructions-heading"><div><span class="instructions-kicker">TUS COMPETICIONES</span><h2 id="league-picker-title">Mis ligas</h2><p>${INVITE.code ? `Te han invitado a una liga. Confirma la unión con el código ${esc(INVITE.code)}.` : "Cambia de liga, sal de una o únete a otra con su código."}</p></div><button class="instructions-close league-picker-close" type="button" onclick="closeLeaguePicker()" aria-label="Cerrar ligas">×</button></header><div class="league-picker-list">${rows || '<p class="profile-hint">Todavía no perteneces a ninguna liga.</p>'}</div>${ownerActions ? `<section class="league-owner-actions" aria-label="Administración de tus ligas"><h3>Administrar ligas</h3>${ownerActions}</section>` : ""}${memberActions ? `<section class="league-owner-actions" aria-label="Administrar miembros de la liga"><h3>Miembros · ${esc(S.league.name)}</h3>${memberActions}</section>` : ""}${LEAGUES.warning ? `<p class="profile-hint" role="status">${esc(LEAGUES.warning)}</p>` : ""}<form class="league-picker-join" onsubmit="event.preventDefault();joinAnotherLeague()"><label for="league-join-code">Unirme a otra liga</label><div><input class="t" id="league-join-code" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Código de invitación" required value="${esc(LEAGUES.inviteCode)}" ${LEAGUES.busy ? "disabled" : ""}><button class="btn" type="submit" ${LEAGUES.busy ? "disabled" : ""}>${LEAGUES.busy ? "Uniéndote…" : "Unirme"}</button></div></form>${LEAGUES.error ? `<p class="profile-error" role="alert">${esc(LEAGUES.error)}</p>` : ""}</section></div>`;
 }
 async function leaveLeague(leagueId) {
   const league = LEAGUES.items.find((item) => item.id === leagueId);
@@ -2435,6 +2734,7 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
   <h2 id="auth-title">${AUTH.mode === "signup" ? "CREAR CUENTA" : AUTH.mode === "update" ? "NUEVA CONTRASEÑA" : "INICIAR SESIÓN"}</h2>
   <p class="auth-card-intro">${AUTH.mode === "signup" ? "Empieza a jugar con los tuyos." : AUTH.mode === "update" ? "Elige una contraseña segura para tu cuenta." : "Vuelve a la jornada. Tus amigos ya están jugando."}</p>
   ${AUTH.error ? `<p class="auth-message" role="status">${esc(AUTH.error)}</p>` : ""}
+  ${INVITE.code ? `<p class="auth-message" role="status">Te han invitado a una liga. Al terminar el acceso podrás unirte con el código <b>${esc(INVITE.code)}</b>.</p>` : ""}
   <form class="auth-form" onsubmit="event.preventDefault();${AUTH.mode === "update" ? "updatePassword()" : "submitAuth()"}">
     ${AUTH.mode === "update" ? "" : `<label for="auth-email">CORREO ELECTRÓNICO</label><div class="auth-input-wrap"><svg class="auth-input-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></svg><input class="t" id="auth-email" type="email" autocomplete="email" required value="${esc(AUTH.email)}" placeholder="tu@correo.com"></div>`}
     <label for="auth-password">${AUTH.mode === "update" ? "NUEVA CONTRASEÑA" : "CONTRASEÑA"}</label>
@@ -2448,9 +2748,10 @@ const authGate = () => `<div class="auth-shell"><section class="auth-brand" aria
   <p class="auth-privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.7 2.9 8.1 7 10 4.1-1.9 7-5.3 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>Tu cuenta mantiene tus ligas y pronósticos sincronizados.</p>
   <nav class="legal-links" aria-label="Información legal"><a href="/privacidad">Privacidad</a><a href="/aviso-legal">Aviso legal</a><a href="/cookies">Cookies</a><a href="/terminos">Términos</a><a href="/creditos">Créditos</a></nav>
   </section></div>`;
-const leagueGate = () => `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><span class="sp"></span><div class="top-actions">${infoButton()}<button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div></div><main class="league-gate">
+const leagueGate = () => `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><span class="sp"></span><div class="top-actions">${infoButton()}<button class="btn ghost install-button" type="button" onclick="installApp()" ${INSTALL.available ? "" : "hidden"} aria-label="Instalar la aplicación PLENO">Instalar</button><button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div></div><main class="league-gate">
 <section class="hero" aria-labelledby="league-gate-title"><span class="league-gate-kicker">PLENO <i></i> LA PORRA DE LALIGA</span><h1 id="league-gate-title">Acierta el marcador.<br>Gana a tus amigos.</h1><p>Pronostica antes del pitido y suma puntos con cada partido.</p></section>
 ${AUTH.error ? `<div class="card err" role="alert">${esc(AUTH.error)}</div>` : ""}
+${INVITE.code ? `<p class="profile-hint" role="status">Te han invitado a una liga. Código: <b>${esc(INVITE.code)}</b></p>` : ""}
 ${LEAGUES.warning ? `<div class="card league-setup-warning" role="status">${esc(LEAGUES.warning)}</div>` : ""}
 <h2 class="league-gate-heading">Elige cómo empezar</h2><div class="gate league-gate-options">
 <form class="card league-choice league-choice-create" onsubmit="event.preventDefault();mk()"><div class="league-choice-heading"><span class="league-choice-number">01</span><div><h3>Crear una liga</h3><p>Invita a tus amigos y montad vuestra porra.</p></div></div><label for="gn">Tu nombre</label><input class="t" id="gn" name="display-name" autocomplete="name" placeholder="¿Cómo te llamamos?" maxlength="30" required value="${esc(LEAGUES.createName)}"><label for="ln">Nombre de la liga</label><input class="t" id="ln" name="league-name" placeholder="p. ej., La porra del sábado" maxlength="50" required value="${esc(LEAGUES.leagueName)}"><button class="btn league-choice-submit" type="submit">Crear mi liga <span aria-hidden="true">→</span></button></form>
@@ -2469,7 +2770,7 @@ async function activateLeague(id, displayName) {
   FAILED_PREDS.clear();
   S.league = { id: data.id, name: data.name, code: data.invite_code };
   V.leagueSection = "ranking";
-  S.me = displayName;
+  S.me = normalizeLeagueDisplayName(displayName) || "Jugador";
   S.preds = {};
   S.joker = {};
   S.friends = {};
@@ -2481,8 +2782,9 @@ async function activateLeague(id, displayName) {
   refreshMinigameScoreData(false);
 }
 async function mk() {
-  const n = $("#ln").value.trim(), me = $("#gn").value.trim();
-  if (!n || !me) return toast("Escribe tu nombre y el de la liga");
+  const n = $("#ln").value.trim();
+  const me = normalizeLeagueDisplayName($("#gn").value);
+  if (!n || !$("#gn").value.trim()) return toast("Escribe tu nombre y el de la liga");
   try {
     const { data, error } = await AUTH.client.rpc("create_league", { p_name: n, p_display_name: me });
     if (error) throw error;
@@ -2490,23 +2792,25 @@ async function mk() {
     await activateLeague(data, me);
     render();
   } catch (e) {
-    LEAGUES.createName = me;
+    LEAGUES.createName = $("#gn").value.trim();
     LEAGUES.leagueName = n;
     AUTH.error = `No se pudo crear la liga: ${e.message}`;
     render();
   }
 }
 async function jn() {
-  const c = $("#lc").value.trim().toUpperCase(), me = $("#gn2").value.trim();
-  if (!c || !me) return toast("Escribe tu nombre y el código");
+  const c = $("#lc").value.trim().toUpperCase();
+  const me = normalizeLeagueDisplayName($("#gn2").value);
+  if (!c || !$("#gn2").value.trim()) return toast("Escribe tu nombre y el código");
   try {
     const { data, error } = await AUTH.client.rpc("join_league", { p_invite_code: c, p_display_name: me });
     if (error) throw error;
     Object.assign(LEAGUES, { joinName: "", inviteCode: "" });
     await activateLeague(data, me);
+    clearPendingLeagueInvite();
     render();
   } catch (e) {
-    LEAGUES.joinName = me;
+    LEAGUES.joinName = $("#gn2").value.trim();
     LEAGUES.inviteCode = c;
     AUTH.error = `No se pudo unir a la liga: ${e.message}`;
     render();
@@ -2534,19 +2838,22 @@ async function joinAnotherLeague() {
     return;
   }
   if (LEAGUES.busy) return;
+  const displayName = normalizeLeagueDisplayName(S.me || AUTH.session.user.email || "Jugador") || "Jugador";
   LEAGUES.busy = true;
   LEAGUES.error = "";
   render();
   try {
     const { data, error } = await AUTH.client.rpc("join_league", {
       p_invite_code: code,
-      p_display_name: S.me || AUTH.session.user.email || "Jugador"
+      p_display_name: displayName
     });
     if (error) throw error;
-    await activateLeague(data, S.me || AUTH.session.user.email || "Jugador");
+    await activateLeague(data, displayName);
+    clearPendingLeagueInvite();
     V.leaguePickerOpen = false;
     toast("Te has unido a la liga.");
   } catch (error) {
+    LEAGUES.inviteCode = code;
     LEAGUES.error = `No se pudo unir a la liga: ${errorText(error)}`;
   } finally {
     LEAGUES.busy = false;
@@ -3020,14 +3327,14 @@ function tLiga() {
       : "";
   const crownRows = challenge.rows.map((player) => ({ ...player, crowns: crowns.get(player.id) || 0 })).filter((player) => player.crowns > 0).sort((a, c) => c.crowns - a.crowns || c.pts - a.pts).map((player, index) => `<div class="crown-player"><b>${index + 1}</b><span>${esc(player.n)}${player.me ? ' <small>(tú)</small>' : ""}</span><strong>♛ ${player.crowns}</strong></div>`).join("");
   const lowerSections = V.leagueSection === "hall" ? roomHallOfFame() : `${roomChat()}${roomFeatures()}`;
-  return `<div class="league-head card"><div class="league-profile"><label class="league-avatar-picker" for="profile-avatar-input" title="Cambiar foto de perfil" aria-label="Cambiar foto de perfil">${chatAvatar(AUTH.session?.user?.id, S.me || "Tú", "league-avatar")}<span class="league-avatar-edit" aria-hidden="true">+</span><input id="profile-avatar-input" type="file" accept="image/*" onchange="uploadProfilePhoto(event)" ${CHAT.uploadingAvatar ? "disabled" : ""}></label><div class="league-profile-copy"><span class="league-kicker">MI LIGA</span><h1>${esc(S.league.name)}</h1><p class="mu">Jugando como <b>${esc(S.me)}</b> · <span>${CHAT.uploadingAvatar ? "Subiendo foto…" : "Cambiar foto"}</span></p></div></div><div class="league-code"><span>CÓDIGO DE LIGA</span><div class="league-code-row"><b>${esc(S.league.code)}</b><button class="league-copy-button" onclick="copyLeagueCode()" aria-label="Copiar código de la liga" title="Copiar código"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span>Copiar</span></button></div></div></div>
+  return `<div class="league-head card"><div class="league-profile"><label class="league-avatar-picker" for="profile-avatar-input" title="Cambiar foto de perfil" aria-label="Cambiar foto de perfil">${chatAvatar(AUTH.session?.user?.id, S.me || "Tú", "league-avatar")}<span class="league-avatar-edit" aria-hidden="true">+</span><input id="profile-avatar-input" type="file" accept="image/*" onchange="uploadProfilePhoto(event)" ${CHAT.uploadingAvatar ? "disabled" : ""}></label><div class="league-profile-copy"><span class="league-kicker">MI LIGA</span><h1>${esc(S.league.name)}</h1><p class="mu">Jugando como <b>${esc(S.me)}</b> · <span>${CHAT.uploadingAvatar ? "Subiendo foto…" : "Cambiar foto"}</span> · <button class="league-rename-button" type="button" onclick="renameLeagueDisplayName()">Cambiar nombre</button></p></div></div><div class="league-code"><span>CÓDIGO DE LIGA</span><div class="league-code-row"><b>${esc(S.league.code)}</b><button class="league-copy-button" onclick="copyLeagueCode()" aria-label="Copiar código de la liga" title="Copiar código"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg><span>Copiar</span></button></div></div></div>
   ${leagueSectionTabs()}<div class="league-main-view" ${V.leagueSection === "hall" ? "hidden" : ""}>${scoreMessage}<section class="round-challenge"><div class="round-heading"><div><span class="round-kicker">COMPETICIÓN PARALELA</span><h2>Reto de la jornada</h2><p>Gana puntos en cada partido y suma coronas durante toda la temporada.</p></div><label class="round-select-label" for="challenge-round">Elegir jornada<select id="challenge-round" onchange="V.challengeMd=Number(this.value);render()" ${roundOptions ? "" : "disabled"}>${roundOptions || '<option>No hay jornadas</option>'}</select></label></div><div class="round-summary"><span><b>${challenge.finished.length}<i>/${challenge.matches.length}</i></b><small>partidos terminados</small></span><span><b>${challenge.rows.length}</b><small>jugadores en la carrera</small></span><span class="round-leader"><b>${hasResults && leader?.pts > 0 ? esc(leader.n) : "—"}</b><small>${hasResults ? leader?.pts > 0 ? "va ganando la jornada" : "sin puntos todavía" : "esperando los primeros resultados"}</small></span></div><div class="round-ranking">${roundRows || (scoreMessage ? "" : '<p class="mu">Todavía no hay participantes en esta liga.</p>')}</div>${!hasResults ? '<p class="round-note">Los puntos de la jornada aparecerán aquí cuando terminen los partidos.</p>' : ""}</section><section class="round-hall"><div class="round-hall-heading"><div><span class="round-kicker">PALMARÉS DE TEMPORADA</span><h2>Campeones de jornada</h2></div><span class="round-hall-note">Gana una corona al ser el mejor de una jornada completa</span></div><div class="crown-list">${crownRows || '<p class="mu">Aún no hay jornadas completas con puntos. La primera corona está en juego.</p>'}</div></section>
   <div class="league-layout">
     <section class="league-board"><div class="league-section-head"><div><h2>Clasificación</h2><p class="mu">Así vais esta temporada</p></div><span class="league-count">${b.length} ${b.length === 1 ? "participante" : "participantes"}</span></div>
       <div class="card league-rank">${b.map((x, i) => `<div class="pl"><b class="league-place ${i === 0 ? "first" : ""}">${i + 1}</b><div class="league-player"><div class="n">${esc(x.n)}${x.me ? ' <span class="league-you">(tú)</span>' : ""}</div><small class="mu">${x.ex} plenos · ${x.ok} dif. · ${x.sg} signos</small></div><div class="r"><b>${x.pts} <small>pts</small></b></div></div>`).join("") || (scoreMessage ? "" : '<p class="mu">Todavía no hay participantes en esta liga.</p>')}</div>
     </section>
     <aside class="league-side"><section class="card invite-card"><h2>Invita a tus amigos</h2><p class="mu">Comparte el código de esta liga. Al unirse, aparecerán aquí y sus pronósticos se sincronizarán automáticamente.</p>
-      <div class="invite-code league-invite-code" aria-label="Código de invitación">${esc(S.league.code)}</div><div class="invite-actions"><button class="btn ghost" onclick="shareLeague()">Compartir liga</button></div>
+      <div class="invite-code league-invite-code" aria-label="Código de invitación">${esc(S.league.code)}</div><div class="invite-actions"><button class="btn ghost" type="button" onclick="copyLeagueCode()">Copiar código</button><button class="btn ghost" type="button" onclick="shareLeague()">Compartir liga</button></div>
       <p class="invite-note">Por privacidad, los pronósticos de los demás solo se muestran cuando empieza cada partido.</p>
     </section>
     <section class="card league-scoring"><b>Puntuación</b><p class="mu">10 marcador exacto · 7 signo y diferencia · 3 solo signo · 0 fallo. Un Joker por jornada duplica los puntos de ese partido.</p></section>
@@ -3237,7 +3544,7 @@ function render() {
   const themeName = { carbon: "carbón", blanco: "claro", medianoche: "medianoche" }[S.th] || "carbón";
   const syncError = Boolean(D.matchesError || D.standingsError || D.teamsError || D.scorersError);
   const syncStale = D.matchesStale || D.standingsStale || D.teamsStale || D.scorersStale;
-  a.innerHTML = `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><button class="league-switcher" type="button" onclick="openLeaguePicker()" aria-label="Mis ligas: cambiar de liga o unirme a otra" title="Mis ligas · cambiar de liga o unirme a otra"><span class="league-switcher-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.8 20 6v5.3c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6l8-3.2Z"/><path d="m8.8 12.1 2.1 2.1 4.5-4.5"/></svg></span><span class="league-switcher-copy"><span class="league-switcher-label">COMPITIENDO EN</span><b>${esc(S.league.name)}</b></span><i aria-hidden="true">⌄</i></button><span class="sp"></span><div class="top-actions"><button class="btn ghost theme-button ${S.th}" onclick="cycleTheme()" aria-label="Cambiar fondo. Tema actual: ${themeName}" title="Cambiar fondo · ${themeName}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></button><button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div><nav class="desktop-nav" aria-label="Secciones principales">${tabs.map(([k, n]) => `<button class="${V.tab === k ? "on" : ""}" onclick="switchTab('${k}')" ${V.tab === k ? 'aria-current="page"' : ""}>${n}</button>`).join("")}</nav><div class="data-sync ${syncError ? "has-error" : syncStale ? "is-stale" : ""}" aria-label="Estado de actualización de datos" title="Actualización automática: partidos cada 30 segundos, clasificación cada minuto, goleadores cada 10 minutos y clubes cada día"><i></i><span class="${freshnessClass(D.matchesStale, D.matchesError)}">${esc(freshnessLabel("Partidos", D.lastMatchesUpdate, D.matchesStale, D.matchesError))}</span><span class="${freshnessClass(D.standingsStale, D.standingsError)}">${esc(freshnessLabel("Clasificación", D.lastStandingsUpdate, D.standingsStale, D.standingsError))}</span><span class="${freshnessClass(D.teamsStale, D.teamsError)}">${esc(freshnessLabel("Clubes", D.lastTeamsUpdate, D.teamsStale, D.teamsError))}</span><span class="${freshnessClass(D.scorersStale, D.scorersError)}">${esc(freshnessLabel("Goleadores", D.lastScorersUpdate, D.scorersStale, D.scorersError))}</span></div></div><main class="tab-content" style="--tab-shift:${V.tabDirection * 1}">${body}</main>${mobileNavigation(tabs)}`;
+  a.innerHTML = `<div class="top"><div class="bar"><a class="brand-lockup" href="/" aria-label="PLENO, inicio"><img src="icon.svg" alt=""><span class="logo">PLENO</span></a><button class="league-switcher" type="button" onclick="openLeaguePicker()" aria-label="Mis ligas: cambiar de liga o unirme a otra" title="Mis ligas · cambiar de liga o unirme a otra"><span class="league-switcher-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2.8 20 6v5.3c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6l8-3.2Z"/><path d="m8.8 12.1 2.1 2.1 4.5-4.5"/></svg></span><span class="league-switcher-copy"><span class="league-switcher-label">COMPITIENDO EN</span><b>${esc(S.league.name)}</b></span><i aria-hidden="true">⌄</i></button><span class="sp"></span><div class="top-actions"><button class="btn ghost install-button" type="button" onclick="installApp()" ${INSTALL.available ? "" : "hidden"} aria-label="Instalar la aplicación PLENO">Instalar</button><button class="btn ghost theme-button ${S.th}" onclick="cycleTheme()" aria-label="Cambiar fondo. Tema actual: ${themeName}" title="Cambiar fondo · ${themeName}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 3.5a8.5 8.5 0 0 0 0 17z"/></svg></button><button class="btn ghost auth-logout" onclick="signOut()" aria-label="Cerrar sesión" title="Cerrar sesión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3m9-7h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6"/></svg></button></div></div><nav class="desktop-nav" aria-label="Secciones principales">${tabs.map(([k, n]) => `<button class="${V.tab === k ? "on" : ""}" onclick="switchTab('${k}')" ${V.tab === k ? 'aria-current="page"' : ""}>${n}</button>`).join("")}</nav><div class="data-sync ${syncError ? "has-error" : syncStale ? "is-stale" : ""}" aria-label="Estado de actualización de datos" title="Actualización automática: partidos cada 30 segundos, clasificación cada minuto, goleadores cada 10 minutos y clubes cada día"><i></i><span class="${freshnessClass(D.matchesStale, D.matchesError)}">${esc(freshnessLabel("Partidos", D.lastMatchesUpdate, D.matchesStale, D.matchesError))}</span><span class="${freshnessClass(D.standingsStale, D.standingsError)}">${esc(freshnessLabel("Clasificación", D.lastStandingsUpdate, D.standingsStale, D.standingsError))}</span><span class="${freshnessClass(D.teamsStale, D.teamsError)}">${esc(freshnessLabel("Clubes", D.lastTeamsUpdate, D.teamsStale, D.teamsError))}</span><span class="${freshnessClass(D.scorersStale, D.scorersError)}">${esc(freshnessLabel("Goleadores", D.lastScorersUpdate, D.scorersStale, D.scorersError))}</span></div></div><main class="tab-content" style="--tab-shift:${V.tabDirection * 1}">${body}</main>${mobileNavigation(tabs)}`;
   const topActions = a.querySelector(".top-actions");
   if (topActions) topActions.insertAdjacentHTML("afterbegin", infoButton() + profileButton());
   a.insertAdjacentHTML("beforeend", instructionsModal() + profileModal() + leaguePickerModal());
@@ -3252,6 +3559,7 @@ function render() {
   }
 }
 if (typeof document !== "undefined" && document.documentElement) {
+  initializeLeagueInvite();
   document.documentElement.dataset.th = S.th;
   document.addEventListener("keydown", handleInstructionsKeydown);
   renderCookieBanner();
@@ -3259,4 +3567,6 @@ if (typeof document !== "undefined" && document.documentElement) {
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") poll(); });
   window.addEventListener("online", () => poll());
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("/sw.js").catch((error) => console.error("No se pudo registrar el service worker de PLENO:", error));
+  window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+  window.addEventListener("appinstalled", handleInstalledApp);
 }

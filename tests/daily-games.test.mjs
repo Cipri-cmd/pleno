@@ -6,7 +6,7 @@ const secret = "test-only-seed-secret-that-is-never-published";
 const qid = (n) => `Q${n}`;
 const source = (n) => [qid(10000 + n)];
 
-function catalogForThirtyDays() {
+function catalogForDays(days = 30) {
   const catalog = { entities: [], connections: [], grid: [], player: [] };
   let index = 1;
   const register = (id, name, attributes = {}) => {
@@ -51,7 +51,7 @@ function catalogForThirtyDays() {
       });
     }
   };
-  for (let day = 0; day < 30; day++) {
+  for (let day = 0; day < days; day++) {
     const date = new Date("2026-01-05T12:00:00Z");
     date.setUTCDate(date.getUTCDate() + day);
     const difficulty = difficultyForDate(date.toISOString().slice(0, 10));
@@ -77,7 +77,7 @@ test("difficulty rises Monday to Sunday", () => {
 });
 
 test("30-day test schedule is deterministic, complete, private, and non-repeating", () => {
-  const catalog = catalogForThirtyDays();
+  const catalog = catalogForDays();
   const first = buildSchedule(catalog, "2026-01-05", 30, secret);
   const second = buildSchedule(catalog, "2026-01-05", 30, secret);
   assert.equal(first.length, 90);
@@ -96,7 +96,7 @@ test("30-day test schedule is deterministic, complete, private, and non-repeatin
 });
 
 test("player answers never appear in the public payload", () => {
-  const catalog = catalogForThirtyDays();
+  const catalog = catalogForDays();
   const candidate = catalog.player[0];
   const puzzle = preparePuzzle("player", candidate, "2026-01-05", secret);
   assert.deepEqual(puzzle.payload, {});
@@ -105,22 +105,47 @@ test("player answers never appear in the public payload", () => {
 });
 
 test("catalog rejects duplicate display names and missing answer entities", () => {
-  const duplicateNameCatalog = catalogForThirtyDays();
+  const duplicateNameCatalog = catalogForDays();
   duplicateNameCatalog.entities[1].name = duplicateNameCatalog.entities[0].name;
   assert.throws(() => validateCatalog(duplicateNameCatalog), /nombres vacíos.*ambiguos/);
 
-  const missingEntityCatalog = catalogForThirtyDays();
+  const missingEntityCatalog = catalogForDays();
   const missingId = missingEntityCatalog.connections[0].solution.groups[0].members[0];
   missingEntityCatalog.entities = missingEntityCatalog.entities.filter((entity) => entity.id !== missingId);
   assert.throws(() => validateCatalog(missingEntityCatalog), /entidades ausentes/);
 });
 
 test("Connections rejects ambiguous partitions", () => {
-  const candidate = catalogForThirtyDays().connections[0];
+  const candidate = catalogForDays().connections[0];
   candidate.possible_groups = [...candidate.possible_groups, {
     category: "Categoría ambigua",
     color: "yellow",
     members: candidate.public.tiles.slice(0, 4)
   }];
   assert.throws(() => preparePuzzle("connections", candidate, "2026-01-05", secret), /única solución/);
+});
+
+test("daily player puzzles exhaust unseen players before reusing a secret", () => {
+  const catalog = catalogForDays(90);
+  const firstSchedule = buildSchedule(catalog, "2026-01-05", 60, secret);
+  const firstPlayers = firstSchedule
+    .filter((puzzle) => puzzle.game === "player")
+    .map((puzzle) => puzzle.solution.player);
+  assert.equal(firstPlayers.length, 60);
+  assert.equal(new Set(firstPlayers).size, firstPlayers.length);
+
+  const usedKeys = firstSchedule
+    .filter((puzzle) => puzzle.game === "player")
+    .flatMap((puzzle) => puzzle.repeat_key_hashes);
+  const nextStart = new Date("2026-01-05T12:00:00Z");
+  nextStart.setUTCDate(nextStart.getUTCDate() + 60);
+  const nextSchedule = buildSchedule(catalog, nextStart.toISOString().slice(0, 10), 30, secret, {
+    player_used_key_hashes: usedKeys
+  });
+  const nextPlayers = nextSchedule
+    .filter((puzzle) => puzzle.game === "player")
+    .map((puzzle) => puzzle.solution.player);
+  assert.equal(nextPlayers.length, 30);
+  assert.equal(new Set(nextPlayers).size, nextPlayers.length);
+  assert.ok(nextPlayers.every((player) => !firstPlayers.includes(player)));
 });
